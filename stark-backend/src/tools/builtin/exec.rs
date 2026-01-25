@@ -12,60 +12,37 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-/// Command execution tool with security restrictions
+/// Command execution tool with configurable security
 pub struct ExecTool {
     definition: ToolDefinition,
-    /// Commands that are explicitly allowed (empty means use deny list only)
-    allow_list: Vec<String>,
-    /// Commands that are explicitly denied
-    deny_list: Vec<String>,
     /// Maximum execution time in seconds
     max_timeout: u64,
+    /// Security mode: "full" (shell allowed), "restricted" (no shell), "sandbox" (future)
+    security_mode: String,
 }
 
 impl ExecTool {
     pub fn new() -> Self {
-        Self::with_restrictions(vec![], Self::default_deny_list(), 60)
+        Self::with_config(300, "full".to_string())
     }
 
-    pub fn with_restrictions(
-        allow_list: Vec<String>,
-        deny_list: Vec<String>,
-        max_timeout: u64,
-    ) -> Self {
+    pub fn with_config(max_timeout: u64, security_mode: String) -> Self {
         let mut properties = HashMap::new();
         properties.insert(
             "command".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "The command to execute".to_string(),
+                description: "The shell command to execute. Can include pipes, redirects, and shell features.".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
             },
         );
         properties.insert(
-            "args".to_string(),
-            PropertySchema {
-                schema_type: "array".to_string(),
-                description: "Arguments to pass to the command".to_string(),
-                default: Some(json!([])),
-                items: Some(Box::new(PropertySchema {
-                    schema_type: "string".to_string(),
-                    description: "Command argument".to_string(),
-                    default: None,
-                    items: None,
-                    enum_values: None,
-                })),
-                enum_values: None,
-            },
-        );
-        properties.insert(
-            "working_dir".to_string(),
+            "workdir".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "Working directory for command execution (relative to workspace)"
-                    .to_string(),
+                description: "Working directory for command execution (defaults to workspace)".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -76,10 +53,20 @@ impl ExecTool {
             PropertySchema {
                 schema_type: "integer".to_string(),
                 description: format!(
-                    "Timeout in seconds (default: 30, max: {})",
+                    "Timeout in seconds (default: 60, max: {})",
                     max_timeout
                 ),
-                default: Some(json!(30)),
+                default: Some(json!(60)),
+                items: None,
+                enum_values: None,
+            },
+        );
+        properties.insert(
+            "env".to_string(),
+            PropertySchema {
+                schema_type: "object".to_string(),
+                description: "Environment variables to set for the command".to_string(),
+                default: Some(json!({})),
                 items: None,
                 enum_values: None,
             },
@@ -88,7 +75,7 @@ impl ExecTool {
         ExecTool {
             definition: ToolDefinition {
                 name: "exec".to_string(),
-                description: "Execute a shell command. Commands are restricted for security. The command runs in the workspace directory.".to_string(),
+                description: "Execute a shell command in the workspace. Supports full shell syntax including pipes, redirects, and command chaining. Use for running CLI tools, scripts, and system commands.".to_string(),
                 input_schema: ToolInputSchema {
                     schema_type: "object".to_string(),
                     properties,
@@ -96,105 +83,44 @@ impl ExecTool {
                 },
                 group: ToolGroup::Exec,
             },
-            allow_list,
-            deny_list,
             max_timeout,
+            security_mode,
         }
     }
 
-    fn default_deny_list() -> Vec<String> {
-        vec![
-            // Dangerous system commands
-            "rm".to_string(),
-            "rmdir".to_string(),
-            "dd".to_string(),
-            "mkfs".to_string(),
-            "fdisk".to_string(),
-            "parted".to_string(),
-            // Network attack tools
-            "nc".to_string(),
-            "netcat".to_string(),
-            "nmap".to_string(),
-            // Privilege escalation
-            "sudo".to_string(),
-            "su".to_string(),
-            "doas".to_string(),
-            "pkexec".to_string(),
-            // Service management
-            "systemctl".to_string(),
-            "service".to_string(),
-            "init".to_string(),
-            // Package management (could install malware)
-            "apt".to_string(),
-            "apt-get".to_string(),
-            "yum".to_string(),
-            "dnf".to_string(),
-            "pacman".to_string(),
-            "brew".to_string(),
-            // Shell spawning
-            "sh".to_string(),
-            "bash".to_string(),
-            "zsh".to_string(),
-            "fish".to_string(),
-            "csh".to_string(),
-            "tcsh".to_string(),
-            // Dangerous file operations
-            "chmod".to_string(),
-            "chown".to_string(),
-            "chgrp".to_string(),
-            // Process manipulation
-            "kill".to_string(),
-            "killall".to_string(),
-            "pkill".to_string(),
-            // Cron/scheduling
-            "crontab".to_string(),
-            "at".to_string(),
-            // Dangerous utilities
-            "eval".to_string(),
-            "exec".to_string(),
-            "source".to_string(),
-            // Environment manipulation
-            "export".to_string(),
-            "unset".to_string(),
-            "env".to_string(),
-        ]
-    }
+    /// Check if a command should be blocked for security
+    fn is_dangerous_command(&self, command: &str) -> Option<String> {
+        let lower = command.to_lowercase();
 
-    fn is_command_allowed(&self, command: &str) -> Result<(), String> {
-        // Extract the base command (without path)
-        let base_command = command
-            .split('/')
-            .last()
-            .unwrap_or(command)
-            .split_whitespace()
-            .next()
-            .unwrap_or(command);
+        // Block commands that could damage the system
+        let dangerous_patterns = [
+            ("rm -rf /", "Attempted to delete root filesystem"),
+            ("rm -rf /*", "Attempted to delete root filesystem"),
+            ("mkfs", "Filesystem formatting not allowed"),
+            ("dd if=", "Raw disk operations not allowed"),
+            (":(){:|:&};:", "Fork bomb detected"),
+            ("chmod -R 777 /", "Dangerous permission change"),
+            ("shutdown", "System shutdown not allowed"),
+            ("reboot", "System reboot not allowed"),
+            ("init 0", "System halt not allowed"),
+            ("init 6", "System reboot not allowed"),
+        ];
 
-        // If allow list is non-empty, command must be in it
-        if !self.allow_list.is_empty() {
-            if !self.allow_list.iter().any(|c| c == base_command) {
-                return Err(format!(
-                    "Command '{}' is not in the allowed commands list",
-                    base_command
-                ));
+        for (pattern, msg) in dangerous_patterns {
+            if lower.contains(pattern) {
+                return Some(msg.to_string());
             }
-            return Ok(());
         }
 
-        // Check deny list
-        if self.deny_list.iter().any(|c| c == base_command) {
-            return Err(format!("Command '{}' is not allowed for security reasons", base_command));
+        // In restricted mode, block shell metacharacters
+        if self.security_mode == "restricted" {
+            let dangerous_chars = ['|', ';', '&', '$', '`', '(', ')', '<', '>'];
+            if command.chars().any(|c| dangerous_chars.contains(&c)) {
+                return Some("Shell metacharacters not allowed in restricted mode".to_string());
+            }
         }
 
-        // Check for shell metacharacters that could be used for injection
-        let dangerous_chars = ['|', ';', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\\'];
-        if command.chars().any(|c| dangerous_chars.contains(&c)) {
-            return Err(
-                "Command contains shell metacharacters which are not allowed".to_string()
-            );
-        }
-
-        Ok(())
+        None
     }
 }
 
@@ -207,9 +133,9 @@ impl Default for ExecTool {
 #[derive(Debug, Deserialize)]
 struct ExecParams {
     command: String,
-    args: Option<Vec<String>>,
-    working_dir: Option<String>,
+    workdir: Option<String>,
     timeout: Option<u64>,
+    env: Option<HashMap<String, String>>,
 }
 
 #[async_trait]
@@ -224,26 +150,12 @@ impl Tool for ExecTool {
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
         };
 
-        // Validate command
-        if let Err(e) = self.is_command_allowed(&params.command) {
-            return ToolResult::error(e);
+        // Check for dangerous commands
+        if let Some(reason) = self.is_dangerous_command(&params.command) {
+            return ToolResult::error(format!("Command blocked: {}", reason));
         }
 
-        // Also validate args for dangerous patterns
-        if let Some(ref args) = params.args {
-            for arg in args {
-                // Check for shell injection in arguments
-                let dangerous_chars = ['|', ';', '&', '$', '`', '(', ')', '<', '>'];
-                if arg.chars().any(|c| dangerous_chars.contains(&c)) {
-                    return ToolResult::error(format!(
-                        "Argument '{}' contains potentially dangerous characters",
-                        arg
-                    ));
-                }
-            }
-        }
-
-        let timeout_secs = params.timeout.unwrap_or(30).min(self.max_timeout);
+        let timeout_secs = params.timeout.unwrap_or(60).min(self.max_timeout);
 
         // Determine working directory
         let workspace = context
@@ -252,7 +164,7 @@ impl Tool for ExecTool {
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
-        let working_dir = if let Some(ref wd) = params.working_dir {
+        let working_dir = if let Some(ref wd) = params.workdir {
             let wd_path = PathBuf::from(wd);
             if wd_path.is_absolute() {
                 wd_path
@@ -263,60 +175,61 @@ impl Tool for ExecTool {
             workspace.clone()
         };
 
-        // Verify working directory is within workspace
-        let canonical_workspace = match workspace.canonicalize() {
-            Ok(p) => p,
-            Err(e) => {
-                return ToolResult::error(format!("Cannot resolve workspace directory: {}", e))
+        // Ensure working directory exists
+        if !working_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&working_dir) {
+                return ToolResult::error(format!("Cannot create working directory: {}", e));
             }
-        };
-
-        let canonical_working_dir = match working_dir.canonicalize() {
-            Ok(p) => p,
-            Err(e) => {
-                return ToolResult::error(format!("Cannot resolve working directory: {}", e))
-            }
-        };
-
-        if !canonical_working_dir.starts_with(&canonical_workspace) {
-            return ToolResult::error(
-                "Working directory must be within the workspace".to_string()
-            );
         }
 
-        // Find the command executable
-        let command_path = match which::which(&params.command) {
-            Ok(p) => p,
-            Err(_) => {
-                return ToolResult::error(format!("Command '{}' not found", params.command))
-            }
+        // Build the command using shell
+        let shell = if cfg!(target_os = "windows") {
+            "cmd"
+        } else {
+            "sh"
         };
 
-        // Build the command
-        let mut cmd = Command::new(&command_path);
-        cmd.current_dir(&canonical_working_dir)
+        let shell_arg = if cfg!(target_os = "windows") {
+            "/C"
+        } else {
+            "-c"
+        };
+
+        let mut cmd = Command::new(shell);
+        cmd.arg(shell_arg)
+            .arg(&params.command)
+            .current_dir(&working_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        // Inject API keys as environment variables for CLI tools
-        // GitHub CLI (gh) uses GH_TOKEN or GITHUB_TOKEN for authentication
+        // Set environment variables from context (API keys)
         if let Some(github_token) = context.get_api_key("github") {
             cmd.env("GH_TOKEN", &github_token);
             cmd.env("GITHUB_TOKEN", &github_token);
         }
 
-        if let Some(ref args) = params.args {
-            cmd.args(args);
+        if let Some(openai_key) = context.get_api_key("openai") {
+            cmd.env("OPENAI_API_KEY", &openai_key);
+        }
+
+        // Set custom environment variables from params
+        if let Some(ref env_vars) = params.env {
+            for (key, value) in env_vars {
+                cmd.env(key, value);
+            }
         }
 
         // Execute with timeout
         let start = std::time::Instant::now();
+        log::info!("Executing command: {} (timeout: {}s, workdir: {:?})",
+            params.command, timeout_secs, working_dir);
+
         let output = match timeout(Duration::from_secs(timeout_secs), cmd.output()).await {
             Ok(Ok(output)) => output,
             Ok(Err(e)) => return ToolResult::error(format!("Failed to execute command: {}", e)),
             Err(_) => {
                 return ToolResult::error(format!(
-                    "Command timed out after {} seconds",
+                    "Command timed out after {} seconds. Consider increasing timeout or running in background.",
                     timeout_secs
                 ))
             }
@@ -337,14 +250,14 @@ impl Tool for ExecTool {
 
         if !stderr.is_empty() {
             if !result_text.is_empty() {
-                result_text.push_str("\n\n--- stderr ---\n");
+                result_text.push_str("\n--- stderr ---\n");
             }
             result_text.push_str(&stderr);
         }
 
         if result_text.is_empty() {
             result_text = if success {
-                "Command completed successfully with no output.".to_string()
+                format!("Command completed successfully (exit code: {})", exit_code)
             } else {
                 format!("Command failed with exit code: {}", exit_code)
             };
@@ -360,6 +273,9 @@ impl Tool for ExecTool {
             );
         }
 
+        log::info!("Command completed: exit_code={}, duration={}ms, output_len={}",
+            exit_code, duration_ms, result_text.len());
+
         let result = if success {
             ToolResult::success(result_text)
         } else {
@@ -368,10 +284,9 @@ impl Tool for ExecTool {
 
         result.with_metadata(json!({
             "command": params.command,
-            "args": params.args,
             "exit_code": exit_code,
             "duration_ms": duration_ms,
-            "working_dir": canonical_working_dir.to_string_lossy()
+            "working_dir": working_dir.to_string_lossy()
         }))
     }
 }
@@ -381,40 +296,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_command_deny_list() {
+    fn test_dangerous_command_detection() {
         let tool = ExecTool::new();
 
-        assert!(tool.is_command_allowed("rm").is_err());
-        assert!(tool.is_command_allowed("sudo").is_err());
-        assert!(tool.is_command_allowed("bash").is_err());
+        assert!(tool.is_dangerous_command("rm -rf /").is_some());
+        assert!(tool.is_dangerous_command("mkfs.ext4 /dev/sda").is_some());
+        assert!(tool.is_dangerous_command(":(){:|:&};:").is_some());
 
-        // These should be allowed
-        assert!(tool.is_command_allowed("ls").is_ok());
-        assert!(tool.is_command_allowed("cat").is_ok());
-        assert!(tool.is_command_allowed("echo").is_ok());
+        // Safe commands
+        assert!(tool.is_dangerous_command("ls -la").is_none());
+        assert!(tool.is_dangerous_command("curl wttr.in").is_none());
+        assert!(tool.is_dangerous_command("echo hello | grep hello").is_none());
     }
 
     #[test]
-    fn test_shell_metacharacter_detection() {
-        let tool = ExecTool::new();
+    fn test_restricted_mode() {
+        let tool = ExecTool::with_config(60, "restricted".to_string());
 
-        assert!(tool.is_command_allowed("cat | grep").is_err());
-        assert!(tool.is_command_allowed("echo; rm -rf").is_err());
-        assert!(tool.is_command_allowed("$(whoami)").is_err());
-        assert!(tool.is_command_allowed("echo `id`").is_err());
-    }
+        // Shell metacharacters blocked in restricted mode
+        assert!(tool.is_dangerous_command("echo hello | grep hello").is_some());
+        assert!(tool.is_dangerous_command("ls; pwd").is_some());
 
-    #[test]
-    fn test_allow_list() {
-        let tool = ExecTool::with_restrictions(
-            vec!["git".to_string(), "npm".to_string()],
-            vec![],
-            60,
-        );
-
-        assert!(tool.is_command_allowed("git").is_ok());
-        assert!(tool.is_command_allowed("npm").is_ok());
-        assert!(tool.is_command_allowed("ls").is_err()); // Not in allow list
+        // Simple commands allowed
+        assert!(tool.is_dangerous_command("ls -la").is_none());
     }
 
     #[tokio::test]
@@ -425,8 +329,7 @@ mod tests {
         let result = tool
             .execute(
                 json!({
-                    "command": "echo",
-                    "args": ["hello", "world"]
+                    "command": "echo hello world"
                 }),
                 &context,
             )
@@ -434,5 +337,23 @@ mod tests {
 
         assert!(result.success);
         assert!(result.content.contains("hello world"));
+    }
+
+    #[tokio::test]
+    async fn test_exec_with_pipes() {
+        let tool = ExecTool::new();
+        let context = ToolContext::new();
+
+        let result = tool
+            .execute(
+                json!({
+                    "command": "echo 'hello world' | tr 'a-z' 'A-Z'"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(result.success);
+        assert!(result.content.contains("HELLO WORLD"));
     }
 }

@@ -1,4 +1,4 @@
-use crate::ai::{AiClient, Message, MessageRole, TypedClaudeMessage, ToolCall, ToolResponse};
+use crate::ai::{AiClient, Message, MessageRole, ToolCall, ToolHistoryEntry, ToolResponse};
 use crate::channels::types::{DispatchResult, NormalizedMessage};
 use crate::db::Database;
 use crate::execution::ExecutionTracker;
@@ -315,7 +315,7 @@ impl MessageDispatcher {
             return client.generate_text(messages).await;
         }
 
-        let mut tool_messages: Vec<TypedClaudeMessage> = Vec::new();
+        let mut tool_history: Vec<ToolHistoryEntry> = Vec::new();
         let mut accumulated_content = String::new();
         let mut iterations = 0;
 
@@ -328,7 +328,7 @@ impl MessageDispatcher {
 
             // Generate response with tools
             let ai_response = client
-                .generate_with_tools(messages.clone(), tool_messages.clone(), tools.clone())
+                .generate_with_tools(messages.clone(), tool_history.clone(), tools.clone())
                 .await?;
 
             // Accumulate any text content
@@ -354,10 +354,12 @@ impl MessageDispatcher {
                 )
                 .await;
 
-            // Build tool messages for next iteration
-            let new_tool_messages =
-                AiClient::build_tool_result_messages(&ai_response.tool_calls, &tool_responses);
-            tool_messages.extend(new_tool_messages);
+            // Build tool history entry for next iteration
+            let history_entry = AiClient::build_tool_history_entry(
+                ai_response.tool_calls.clone(),
+                tool_responses,
+            );
+            tool_history.push(history_entry);
         }
 
         if accumulated_content.is_empty() {

@@ -41,6 +41,25 @@ impl ToolResponse {
     }
 }
 
+/// Provider-agnostic tool history entry
+/// Stores a round of tool calls and their responses for continuing conversations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolHistoryEntry {
+    /// The tool calls made by the AI
+    pub tool_calls: Vec<ToolCall>,
+    /// The responses from executing those tool calls
+    pub tool_responses: Vec<ToolResponse>,
+}
+
+impl ToolHistoryEntry {
+    pub fn new(tool_calls: Vec<ToolCall>, tool_responses: Vec<ToolResponse>) -> Self {
+        ToolHistoryEntry {
+            tool_calls,
+            tool_responses,
+        }
+    }
+}
+
 /// Unified AI response that can contain both text and tool calls
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiResponse {

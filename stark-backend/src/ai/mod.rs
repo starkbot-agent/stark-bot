@@ -6,7 +6,9 @@ pub mod types;
 pub use claude::ClaudeClient;
 pub use llama::LlamaClient;
 pub use openai::OpenAIClient;
-pub use types::{AiResponse, ClaudeMessage as TypedClaudeMessage, ToolCall, ToolResponse};
+pub use types::{
+    AiResponse, ClaudeMessage as TypedClaudeMessage, ToolCall, ToolHistoryEntry, ToolResponse,
+};
 
 use crate::models::{AgentSettings, AiProvider};
 use crate::tools::ToolDefinition;
@@ -88,22 +90,29 @@ impl AiClient {
         }
     }
 
-    /// Generate response with tool support (currently only Claude supports tools)
+    /// Generate response with tool support (Claude and OpenAI/OpenAI-compatible)
     pub async fn generate_with_tools(
         &self,
         messages: Vec<Message>,
-        tool_messages: Vec<TypedClaudeMessage>,
+        tool_history: Vec<ToolHistoryEntry>,
         tools: Vec<ToolDefinition>,
     ) -> Result<AiResponse, String> {
         match self {
             AiClient::Claude(client) => {
-                client.generate_with_tools(messages, tool_messages, tools).await
+                // Convert tool history to Claude format
+                let tool_messages = Self::tool_history_to_claude(&tool_history);
+                client
+                    .generate_with_tools(messages, tool_messages, tools)
+                    .await
             }
-            // Other providers fall back to text-only generation
             AiClient::OpenAI(client) => {
-                let text = client.generate_text(messages).await?;
-                Ok(AiResponse::text(text))
+                // Convert tool history to OpenAI format
+                let tool_messages = Self::tool_history_to_openai(&tool_history);
+                client
+                    .generate_with_tools(messages, tool_messages, tools)
+                    .await
             }
+            // Llama falls back to text-only generation
             AiClient::Llama(client) => {
                 let text = client.generate_text(messages).await?;
                 Ok(AiResponse::text(text))
@@ -113,14 +122,65 @@ impl AiClient {
 
     /// Check if the current provider supports tools
     pub fn supports_tools(&self) -> bool {
-        matches!(self, AiClient::Claude(_))
+        matches!(self, AiClient::Claude(_) | AiClient::OpenAI(_))
     }
 
-    /// Build tool result messages for continuing after tool execution (Claude-specific)
-    pub fn build_tool_result_messages(
-        tool_calls: &[ToolCall],
-        tool_responses: &[ToolResponse],
-    ) -> Vec<TypedClaudeMessage> {
-        ClaudeClient::build_tool_result_messages(tool_calls, tool_responses)
+    /// Build a tool history entry from tool calls and responses
+    pub fn build_tool_history_entry(
+        tool_calls: Vec<ToolCall>,
+        tool_responses: Vec<ToolResponse>,
+    ) -> ToolHistoryEntry {
+        ToolHistoryEntry::new(tool_calls, tool_responses)
+    }
+
+    /// Convert tool history to Claude format
+    fn tool_history_to_claude(history: &[ToolHistoryEntry]) -> Vec<TypedClaudeMessage> {
+        use types::{ClaudeContentBlock, ClaudeMessage, ClaudeMessageContent};
+
+        let mut messages = Vec::new();
+        for entry in history {
+            // Build assistant message with tool_use blocks
+            let tool_use_blocks: Vec<ClaudeContentBlock> = entry
+                .tool_calls
+                .iter()
+                .map(|tc| ClaudeContentBlock::ToolUse {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    input: tc.arguments.clone(),
+                })
+                .collect();
+
+            messages.push(ClaudeMessage {
+                role: "assistant".to_string(),
+                content: ClaudeMessageContent::Blocks(tool_use_blocks),
+            });
+
+            // Build user message with tool_result blocks
+            let result_blocks: Vec<ClaudeContentBlock> = entry
+                .tool_responses
+                .iter()
+                .map(|tr| ClaudeContentBlock::tool_result(
+                    tr.tool_call_id.clone(),
+                    tr.content.clone(),
+                    tr.is_error,
+                ))
+                .collect();
+
+            messages.push(ClaudeMessage::user_with_tool_results(result_blocks));
+        }
+        messages
+    }
+
+    /// Convert tool history to OpenAI format
+    fn tool_history_to_openai(
+        history: &[ToolHistoryEntry],
+    ) -> Vec<openai::OpenAIMessage> {
+        let mut messages = Vec::new();
+        for entry in history {
+            let openai_messages =
+                OpenAIClient::build_tool_result_messages(&entry.tool_calls, &entry.tool_responses);
+            messages.extend(openai_messages);
+        }
+        messages
     }
 }
