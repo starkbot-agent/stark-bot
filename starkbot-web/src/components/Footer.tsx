@@ -11,19 +11,6 @@ export function Footer() {
           <span className="font-semibold">StarkBot</span>
         </div>
         <p className="text-slate-500 text-sm">
-          Open source AI assistant. Built with care.
-        </p>
-        <a
-          href="https://github.com/ethereumdegen/stark-bot"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-slate-400 hover:text-white transition-colors"
-        >
-          <Github className="w-6 h-6" />
-        </a>
-      </div>
-      <div className="max-w-6xl mx-auto mt-8 pt-6 border-t border-slate-800 text-center">
-        <p className="text-slate-500 text-sm">
           made with &lt;3 by{' '}
           <a
             href="https://ethereumdegen.com"
@@ -34,6 +21,14 @@ export function Footer() {
             @ethereumdegen
           </a>
         </p>
+        <a
+          href="https://github.com/ethereumdegen/stark-bot"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-slate-400 hover:text-white transition-colors"
+        >
+          <Github className="w-6 h-6" />
+        </a>
       </div>
     </footer>
   )
