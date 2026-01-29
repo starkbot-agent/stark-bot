@@ -796,11 +796,14 @@ impl MessageDispatcher {
                 &call.arguments,
             ));
 
-            // Execute the tool
-            let result = self
-                .tool_registry
-                .execute(&call.name, call.arguments.clone(), tool_context, Some(tool_config))
-                .await;
+            // Execute the tool (handle special "use_skill" pseudo-tool)
+            let result = if call.name == "use_skill" {
+                self.execute_skill_tool(&call.arguments).await
+            } else {
+                self.tool_registry
+                    .execute(&call.name, call.arguments.clone(), tool_context, Some(tool_config))
+                    .await
+            };
 
             let duration_ms = start.elapsed().as_millis() as i64;
 
