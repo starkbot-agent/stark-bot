@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, RotateCcw, Copy, Check, Wallet, Bug, Square } from 'lucide-react';
+import { Send, RotateCcw, Copy, Check, Wallet, Bug, Square, Loader2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import ChatMessage from '@/components/chat/ChatMessage';
 import TypingIndicator from '@/components/chat/TypingIndicator';
@@ -61,6 +61,7 @@ export default function AgentChat() {
   );
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [debugMode, setDebugMode] = useState(false);
@@ -406,19 +407,34 @@ export default function AgentChat() {
     const handleExecutionStarted = () => {
       console.log('[Execution] Started');
       setIsLoading(true);
+      setIsStopping(false); // Reset stopping state on new execution
     };
 
     const handleExecutionCompleted = () => {
       console.log('[Execution] Completed');
       setIsLoading(false);
+      setIsStopping(false);
+    };
+
+    const handleExecutionStopped = (data: unknown) => {
+      const event = data as { channel_id: number; execution_id: string; reason: string };
+      console.log('[Execution] Stopped:', event.reason);
+      setIsLoading(false);
+      setIsStopping(false);
+      // Mark all running subagents as cancelled
+      setSubagents(prev => prev.map(s =>
+        s.status === SubagentStatus.Running ? { ...s, status: SubagentStatus.Cancelled } : s
+      ));
     };
 
     on('execution.started', handleExecutionStarted);
     on('execution.completed', handleExecutionCompleted);
+    on('execution.stopped', handleExecutionStopped);
 
     return () => {
       off('execution.started', handleExecutionStarted);
       off('execution.completed', handleExecutionCompleted);
+      off('execution.stopped', handleExecutionStopped);
     };
   }, [on, off]);
 
@@ -703,19 +719,23 @@ export default function AgentChat() {
       }
     },
     [Command.Stop]: async () => {
-      if (!isLoading) {
+      const hasRunningSubagents = subagents.some(s => s.status === SubagentStatus.Running);
+      if (!isLoading && !hasRunningSubagents) {
         addMessage('system', 'No execution in progress.');
         return;
       }
+      setIsStopping(true);
       try {
         const result = await stopExecution();
         if (result.success) {
-          setIsLoading(false);
-          addMessage('system', result.message || 'Execution stopped.');
+          // Don't set isLoading=false here - wait for execution.stopped event
+          addMessage('system', result.message || 'Stopping executions...');
         } else {
+          setIsStopping(false);
           addMessage('error', result.error || 'Failed to stop execution.');
         }
       } catch (error) {
+        setIsStopping(false);
         addMessage('error', error instanceof Error ? error.message : 'Failed to stop execution');
       }
     },
@@ -978,22 +998,24 @@ export default function AgentChat() {
           <Button
             variant="ghost"
             size="sm"
+            disabled={isStopping}
             onClick={async () => {
               const hasRunningSubagents = subagents.some(s => s.status === SubagentStatus.Running);
               if (isLoading || hasRunningSubagents) {
                 // Stop ALL executions including subagents
+                setIsStopping(true);
                 try {
                   const result = await stopExecution();
                   if (result.success) {
-                    setIsLoading(false);
-                    // Mark all subagents as cancelled
-                    setSubagents(prev => prev.map(s =>
-                      s.status === SubagentStatus.Running ? { ...s, status: SubagentStatus.Cancelled } : s
-                    ));
-                    addMessage('system', result.message || 'All executions stopped.');
+                    // Don't set isLoading=false here - wait for execution.stopped event
+                    addMessage('system', result.message || 'Stopping executions...');
+                  } else {
+                    // Reset stopping state on failure
+                    setIsStopping(false);
                   }
                 } catch (error) {
                   console.error('Failed to stop execution:', error);
+                  setIsStopping(false);
                 }
               } else {
                 // Clear the chat and start new session
@@ -1009,7 +1031,12 @@ export default function AgentChat() {
               }
             }}
           >
-            {(isLoading || subagents.some(s => s.status === SubagentStatus.Running)) ? (
+            {isStopping ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Stopping...
+              </>
+            ) : (isLoading || subagents.some(s => s.status === SubagentStatus.Running)) ? (
               <>
                 <Square className="w-4 h-4 mr-2" />
                 Stop

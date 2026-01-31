@@ -57,12 +57,19 @@ impl AgentSubtype {
     }
 
     /// Get the skill tags allowed for this subtype
+    /// Note: "general" and "all" tags are available to ALL subtypes
     pub fn allowed_skill_tags(&self) -> Vec<&'static str> {
+        // Universal tags available to all subtypes
+        let mut tags = vec!["general", "all"];
+
+        // Add subtype-specific tags
         match self {
-            AgentSubtype::Finance => vec!["crypto", "defi", "transfer", "swap", "finance", "wallet", "token"],
-            AgentSubtype::CodeEngineer => vec!["development", "git", "testing", "debugging", "review", "code", "github"],
-            AgentSubtype::Secretary => vec!["social", "marketing", "messaging", "twitter", "scheduling", "communication", "social-media"],
+            AgentSubtype::Finance => tags.extend(["crypto", "defi", "transfer", "swap", "finance", "wallet", "token"]),
+            AgentSubtype::CodeEngineer => tags.extend(["development", "git", "testing", "debugging", "review", "code", "github"]),
+            AgentSubtype::Secretary => tags.extend(["social", "marketing", "messaging", "twitter", "scheduling", "communication", "social-media"]),
         }
+
+        tags
     }
 
     /// Human-readable label for UI display

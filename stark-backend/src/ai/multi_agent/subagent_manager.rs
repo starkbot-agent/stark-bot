@@ -618,6 +618,24 @@ impl SubAgentManager {
         count
     }
 
+    /// Cancel all running sub-agents for a specific channel and wait briefly for cleanup
+    /// Returns the number of agents cancelled
+    pub async fn cancel_all_for_channel_and_wait(&self, channel_id: i64, wait_duration: Duration) -> usize {
+        let count = self.cancel_all_for_channel(channel_id);
+
+        if count > 0 {
+            // Brief wait for cancellation signals to be processed
+            tokio::time::sleep(wait_duration).await;
+            log::info!(
+                "[SUBAGENT_MANAGER] Waited {:?} for {} subagent(s) to acknowledge cancellation",
+                wait_duration,
+                count
+            );
+        }
+
+        count
+    }
+
     /// Get count of active (running) sub-agents
     pub fn active_count(&self) -> usize {
         self.active_agents.len()

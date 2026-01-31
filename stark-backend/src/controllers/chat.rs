@@ -190,6 +190,8 @@ async fn stop_execution(
     state: web::Data<AppState>,
     req: HttpRequest,
 ) -> impl Responder {
+    use std::time::Duration;
+
     // Validate session token
     let token = req
         .headers()
@@ -229,13 +231,20 @@ async fn stop_execution(
     };
 
     // Cancel the execution for the web channel
+    // This will:
+    // 1. Cancel via CancellationToken (immediate interruption of async ops)
+    // 2. Set the cancelled flag (for checkpoint compatibility)
+    // 3. Emit execution.stopped event for frontend confirmation
+    // 4. Complete/abort the current execution
     log::info!("[CHAT_STOP] Stopping execution for web channel {}", WEB_CHANNEL_ID);
     state.execution_tracker.cancel_execution(WEB_CHANNEL_ID);
 
-    // Also cancel any running subagents for this channel
+    // Also cancel any running subagents for this channel and wait for acknowledgment
     let mut subagents_cancelled = 0;
     if let Some(subagent_manager) = state.dispatcher.subagent_manager() {
-        subagents_cancelled = subagent_manager.cancel_all_for_channel(WEB_CHANNEL_ID);
+        subagents_cancelled = subagent_manager
+            .cancel_all_for_channel_and_wait(WEB_CHANNEL_ID, Duration::from_millis(100))
+            .await;
         log::info!("[CHAT_STOP] Cancelled {} subagents for web channel", subagents_cancelled);
     }
 

@@ -12,7 +12,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
-            "SELECT id, endpoint, model_archetype, max_tokens, enabled, created_at, updated_at
+            "SELECT id, endpoint, model_archetype, max_tokens, enabled, secret_key, created_at, updated_at
              FROM agent_settings WHERE enabled = 1 LIMIT 1",
         )?;
 
@@ -28,7 +28,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
-            "SELECT id, endpoint, model_archetype, max_tokens, enabled, created_at, updated_at
+            "SELECT id, endpoint, model_archetype, max_tokens, enabled, secret_key, created_at, updated_at
              FROM agent_settings WHERE endpoint = ?1",
         )?;
 
@@ -44,7 +44,7 @@ impl Database {
         let conn = self.conn.lock().unwrap();
 
         let mut stmt = conn.prepare(
-            "SELECT id, endpoint, model_archetype, max_tokens, enabled, created_at, updated_at
+            "SELECT id, endpoint, model_archetype, max_tokens, enabled, secret_key, created_at, updated_at
              FROM agent_settings ORDER BY id",
         )?;
 
@@ -62,6 +62,7 @@ impl Database {
         endpoint: &str,
         model_archetype: &str,
         max_tokens: i32,
+        secret_key: Option<&str>,
     ) -> SqliteResult<AgentSettings> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
@@ -81,15 +82,15 @@ impl Database {
         if let Some(id) = existing {
             // Update existing
             conn.execute(
-                "UPDATE agent_settings SET model_archetype = ?1, max_tokens = ?2, enabled = 1, updated_at = ?3 WHERE id = ?4",
-                rusqlite::params![model_archetype, max_tokens, &now, id],
+                "UPDATE agent_settings SET model_archetype = ?1, max_tokens = ?2, secret_key = ?3, enabled = 1, updated_at = ?4 WHERE id = ?5",
+                rusqlite::params![model_archetype, max_tokens, secret_key, &now, id],
             )?;
         } else {
             // Insert new
             conn.execute(
-                "INSERT INTO agent_settings (endpoint, model_archetype, max_tokens, enabled, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, 1, ?4, ?5)",
-                rusqlite::params![endpoint, model_archetype, max_tokens, &now, &now],
+                "INSERT INTO agent_settings (endpoint, model_archetype, max_tokens, secret_key, enabled, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)",
+                rusqlite::params![endpoint, model_archetype, max_tokens, secret_key, &now, &now],
             )?;
         }
 
@@ -109,8 +110,8 @@ impl Database {
     }
 
     fn row_to_agent_settings(row: &rusqlite::Row) -> rusqlite::Result<AgentSettings> {
-        let created_at_str: String = row.get(5)?;
-        let updated_at_str: String = row.get(6)?;
+        let created_at_str: String = row.get(6)?;
+        let updated_at_str: String = row.get(7)?;
 
         Ok(AgentSettings {
             id: row.get(0)?,
@@ -118,6 +119,7 @@ impl Database {
             model_archetype: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "kimi".to_string()),
             max_tokens: row.get::<_, Option<i32>>(3)?.unwrap_or(40000),
             enabled: row.get::<_, i32>(4)? != 0,
+            secret_key: row.get(5)?,
             created_at: DateTime::parse_from_rfc3339(&created_at_str)
                 .unwrap()
                 .with_timezone(&Utc),

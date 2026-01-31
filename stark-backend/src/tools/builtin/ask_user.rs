@@ -137,22 +137,12 @@ impl Tool for AskUserTool {
             output.push_str(&format!("\n(Default: {})\n", default));
         }
 
-        // Wrap the output with clear instructions for the LLM
-        let final_output = format!(
-            "[WAITING FOR USER RESPONSE - DO NOT CONTINUE UNTIL USER REPLIES]\n\n\
-            The following question has been displayed to the user:\n\
-            ---\n\
-            {}\n\
-            ---\n\n\
-            You MUST wait for the user's response before taking any further action. \
-            Do not answer the question yourself or make assumptions.",
-            output
-        );
-
         // Return as a special result that indicates user input is needed
-        ToolResult::success(final_output)
+        // The waiting instruction goes in metadata, not visible output
+        ToolResult::success(output)
             .with_metadata(json!({
                 "requires_user_response": true,
+                "instruction": "WAIT for the user's response before taking any action. Do not answer the question yourself.",
                 "question": params.question,
                 "options": params.options,
                 "default": params.default

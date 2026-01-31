@@ -24,6 +24,9 @@ async-trait = "0.1"
 
 # Gateway WebSocket server
 tokio-tungstenite = "0.21"
+
+# Cancellation tokens for async task management
+tokio-util = "0.7"
 futures-util = "0.3"
 
 # Telegram integration

@@ -192,32 +192,66 @@ impl ExecTool {
 
     /// Check if a command is interactive (requires user input)
     fn is_interactive_command(command: &str) -> Option<String> {
+        // Helper to check if a pattern appears as an actual command (not inside quotes)
+        fn is_command_pattern(command: &str, pattern: &str) -> bool {
+            // Check if pattern appears at start of command or after command separators
+            // This avoids false positives when the pattern appears inside quoted strings
+            let cmd = command.trim();
+
+            // Check if command starts with the pattern
+            if cmd.starts_with(pattern) {
+                return true;
+            }
+
+            // Check if pattern appears after command separators (|, ;, &&, ||)
+            // but NOT inside quoted strings
+            let separators = [" | ", " || ", " && ", "; "];
+            for sep in separators {
+                for part in cmd.split(sep) {
+                    if part.trim().starts_with(pattern) {
+                        return true;
+                    }
+                }
+            }
+
+            false
+        }
+
         // Commands that prompt for interactive input
-        let interactive_patterns = [
-            ("gh auth login", "gh auth login is interactive. Configure GITHUB_TOKEN in Settings > API Keys instead."),
-            ("gh auth", "gh auth commands are interactive. Configure GITHUB_TOKEN in Settings > API Keys instead."),
-            ("ssh-keygen", "ssh-keygen is interactive. Provide all options via flags or use pre-generated keys."),
-            ("passwd", "passwd is interactive and not allowed."),
-            ("sudo -S", "Interactive sudo not allowed."),
-            ("read -p", "Interactive read not allowed."),
-            (" read ", "Interactive read not allowed in scripts."),
-            ("vim ", "vim is interactive. Use file editing tools instead."),
-            ("vi ", "vi is interactive. Use file editing tools instead."),
-            ("nano ", "nano is interactive. Use file editing tools instead."),
-            ("emacs ", "emacs is interactive. Use file editing tools instead."),
-            ("less ", "less is interactive. Use cat or head/tail instead."),
-            ("more ", "more is interactive. Use cat or head/tail instead."),
-            ("mysql -u", "Interactive mysql not allowed. Use mysql -e for queries."),
-            ("psql ", "Interactive psql not allowed. Use psql -c for queries."),
-            ("python3 -i", "Interactive Python not allowed."),
-            ("python -i", "Interactive Python not allowed."),
-            ("node --inspect", "Interactive Node debugging not allowed."),
-            ("gdb ", "Interactive gdb not allowed."),
-            ("lldb ", "Interactive lldb not allowed."),
+        // Format: (pattern, message, check_as_command)
+        // check_as_command=true means only match if it's actually a command, not inside strings
+        let interactive_patterns: &[(&str, &str, bool)] = &[
+            ("gh auth login", "gh auth login is interactive. Configure GITHUB_TOKEN in Settings > API Keys instead.", true),
+            ("gh auth", "gh auth commands are interactive. Configure GITHUB_TOKEN in Settings > API Keys instead.", true),
+            ("ssh-keygen", "ssh-keygen is interactive. Provide all options via flags or use pre-generated keys.", true),
+            ("passwd", "passwd is interactive and not allowed.", true),
+            ("sudo -S", "Interactive sudo not allowed.", false),
+            ("read -p", "Interactive read not allowed.", false),
+            ("read -n", "Interactive read not allowed.", false),
+            ("| read ", "Interactive read piped input not allowed.", false),
+            ("; read ", "Interactive read not allowed in scripts.", false),
+            ("&& read ", "Interactive read not allowed in scripts.", false),
+            ("vim ", "vim is interactive. Use file editing tools instead.", true),
+            ("vi ", "vi is interactive. Use file editing tools instead.", true),
+            ("nano ", "nano is interactive. Use file editing tools instead.", true),
+            ("emacs ", "emacs is interactive. Use file editing tools instead.", true),
+            ("less ", "less is interactive. Use cat or head/tail instead.", true),
+            ("more ", "more is interactive. Use cat or head/tail instead.", true),
+            ("mysql -u", "Interactive mysql not allowed. Use mysql -e for queries.", true),
+            ("psql ", "Interactive psql not allowed. Use psql -c for queries.", true),
+            ("python3 -i", "Interactive Python not allowed.", true),
+            ("python -i", "Interactive Python not allowed.", true),
+            ("node --inspect", "Interactive Node debugging not allowed.", true),
+            ("gdb ", "Interactive gdb not allowed.", true),
+            ("lldb ", "Interactive lldb not allowed.", true),
         ];
 
-        for (pattern, msg) in interactive_patterns {
-            if command.contains(pattern) {
+        for (pattern, msg, check_as_command) in interactive_patterns {
+            if *check_as_command {
+                if is_command_pattern(command, pattern) {
+                    return Some(msg.to_string());
+                }
+            } else if command.contains(pattern) {
                 return Some(msg.to_string());
             }
         }

@@ -17,6 +17,7 @@ interface Settings {
   endpoint?: string;
   model_archetype?: string;
   max_tokens?: number;
+  has_secret_key?: boolean;
 }
 
 export default function AgentSettings() {
@@ -24,6 +25,8 @@ export default function AgentSettings() {
   const [customEndpoint, setCustomEndpoint] = useState('');
   const [modelArchetype, setModelArchetype] = useState<ModelArchetype>('kimi');
   const [maxTokens, setMaxTokens] = useState(40000);
+  const [secretKey, setSecretKey] = useState('');
+  const [hasExistingSecretKey, setHasExistingSecretKey] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -59,6 +62,9 @@ export default function AgentSettings() {
       } else {
         setEndpointOption('kimi');
       }
+
+      // Set secret key indicator
+      setHasExistingSecretKey(data.has_secret_key ?? false);
 
       // Set model archetype
       if (data.model_archetype && ['kimi', 'llama', 'claude', 'openai'].includes(data.model_archetype)) {
@@ -102,12 +108,30 @@ export default function AgentSettings() {
         : endpointOption === 'llama' ? 'llama'
         : modelArchetype;
 
-      await updateAgentSettings({
+      // Only include secret_key for custom endpoints, and only if provided
+      const payload: {
+        endpoint: string;
+        model_archetype: string;
+        max_tokens: number;
+        secret_key?: string;
+      } = {
         endpoint,
         model_archetype: archetype,
         max_tokens: maxTokens,
-      });
+      };
+
+      if (endpointOption === 'custom' && secretKey.trim()) {
+        payload.secret_key = secretKey;
+      }
+
+      await updateAgentSettings(payload);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
+
+      // Update the indicator if we saved a new key
+      if (endpointOption === 'custom' && secretKey.trim()) {
+        setHasExistingSecretKey(true);
+        setSecretKey(''); // Clear the input after saving
+      }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
@@ -156,12 +180,32 @@ export default function AgentSettings() {
               </div>
 
               {endpointOption === 'custom' && (
-                <Input
-                  label="Custom Endpoint URL"
-                  value={customEndpoint}
-                  onChange={(e) => setCustomEndpoint(e.target.value)}
-                  placeholder="https://your-endpoint.com/v1/chat/completions"
-                />
+                <>
+                  <Input
+                    label="Custom Endpoint URL"
+                    value={customEndpoint}
+                    onChange={(e) => setCustomEndpoint(e.target.value)}
+                    placeholder="https://your-endpoint.com/v1/chat/completions"
+                  />
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      API Secret Key
+                      {hasExistingSecretKey && (
+                        <span className="ml-2 text-xs text-green-400">(configured)</span>
+                      )}
+                    </label>
+                    <input
+                      type="password"
+                      value={secretKey}
+                      onChange={(e) => setSecretKey(e.target.value)}
+                      placeholder={hasExistingSecretKey ? "Leave empty to keep existing key" : "Leave empty if using x402 endpoint (defirelay.com)"}
+                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-stark-500 focus:border-transparent"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Required for standard OpenAI-compatible endpoints. Not needed for x402 endpoints (defirelay.com).
+                    </p>
+                  </div>
+                </>
               )}
 
               <div>

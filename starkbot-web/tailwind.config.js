@@ -7,35 +7,30 @@ export default {
   theme: {
     extend: {
       colors: {
-        stark: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-          950: '#082f49',
+        tempo: {
+          bg: '#1a1a1a',
+          surface: 'rgba(255, 255, 255, 0.05)',
+          border: 'rgba(255, 255, 255, 0.1)',
+          'border-hover': 'rgba(255, 255, 255, 0.2)',
+          muted: 'rgba(255, 255, 255, 0.5)',
         }
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['GeistMono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       animation: {
         'float': 'float 6s ease-in-out infinite',
-        'twinkle': 'twinkle 3s ease-in-out infinite',
+        'grid-pulse': 'grid-pulse 4s ease-in-out infinite',
       },
       keyframes: {
         float: {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-20px)' },
         },
-        twinkle: {
+        'grid-pulse': {
           '0%, 100%': { opacity: '0.3' },
-          '50%': { opacity: '1' },
+          '50%': { opacity: '0.6' },
         }
       }
     },

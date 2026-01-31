@@ -3,6 +3,7 @@ use crate::gateway::protocol::GatewayEvent;
 use crate::models::{ExecutionTask, TaskMetrics, TaskStatus, TaskType};
 use dashmap::DashMap;
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 /// Tracks execution progress for agent tasks
 ///
@@ -17,6 +18,8 @@ pub struct ExecutionTracker {
     channel_executions: DashMap<i64, String>,
     /// Channels that have been cancelled (checked by tool loops)
     cancelled_channels: DashMap<i64, bool>,
+    /// Cancellation tokens for immediate async interruption per channel
+    cancellation_tokens: DashMap<i64, CancellationToken>,
 }
 
 impl ExecutionTracker {
@@ -27,16 +30,43 @@ impl ExecutionTracker {
             tasks: DashMap::new(),
             channel_executions: DashMap::new(),
             cancelled_channels: DashMap::new(),
+            cancellation_tokens: DashMap::new(),
         }
+    }
+
+    /// Get a cancellation token for a channel
+    /// Creates a new token if one doesn't exist
+    pub fn get_cancellation_token(&self, channel_id: i64) -> CancellationToken {
+        self.cancellation_tokens
+            .entry(channel_id)
+            .or_insert_with(CancellationToken::new)
+            .clone()
     }
 
     /// Cancel any ongoing execution for a channel
     /// This sets a flag that tool loops should check to exit early
+    /// and cancels via token for immediate async interruption
     pub fn cancel_execution(&self, channel_id: i64) {
         log::info!("[EXECUTION_TRACKER] Cancelling execution for channel {}", channel_id);
+
+        // Cancel via token (immediate interruption of async operations)
+        if let Some(token) = self.cancellation_tokens.get(&channel_id) {
+            token.cancel();
+        }
+
+        // Also set flag (for checkpoint compatibility)
         self.cancelled_channels.insert(channel_id, true);
 
-        // Also complete/abort the current execution if there is one
+        // Emit execution stopped event before completing
+        if let Some(execution_id) = self.get_execution_id(channel_id) {
+            self.broadcaster.broadcast(GatewayEvent::execution_stopped(
+                channel_id,
+                &execution_id,
+                "User requested stop",
+            ));
+        }
+
+        // Complete/abort the current execution
         self.complete_execution(channel_id);
     }
 
@@ -48,6 +78,8 @@ impl ExecutionTracker {
     /// Clear the cancellation flag for a channel (called when starting new execution)
     pub fn clear_cancellation(&self, channel_id: i64) {
         self.cancelled_channels.remove(&channel_id);
+        // Replace with a fresh token for the new execution
+        self.cancellation_tokens.insert(channel_id, CancellationToken::new());
     }
 
     /// Start a new execution for a channel

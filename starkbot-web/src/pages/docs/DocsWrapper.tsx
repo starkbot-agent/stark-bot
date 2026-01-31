@@ -73,13 +73,13 @@ export default function DocsWrapper({ attributes, children }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-[#1a1a1a]">
       {/* Top nav */}
-      <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur-sm sticky top-0 z-20">
+      <header className="border-b border-white/10 bg-[#1a1a1a]/90 backdrop-blur-sm sticky top-0 z-20">
         <div className="flex items-center justify-between px-6 h-14">
           {/* Logo */}
           <NavLink to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/20">
               <span className="text-white text-sm font-bold">S</span>
             </div>
           </NavLink>
@@ -87,13 +87,13 @@ export default function DocsWrapper({ attributes, children }: Props) {
           {/* Search */}
           <div className="flex-1 max-w-xl mx-auto px-8">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
               <input
                 type="text"
                 placeholder="Search..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-16 py-2 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:border-slate-600"
+                className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-16 py-2 text-sm text-white/80 placeholder-white/40 focus:outline-none focus:border-white/20"
               />
-              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs text-slate-500 bg-slate-800 rounded border border-slate-700">
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 text-xs text-white/40 bg-white/5 rounded border border-white/10">
                 Ctrl K
               </kbd>
             </div>
@@ -101,7 +101,7 @@ export default function DocsWrapper({ attributes, children }: Props) {
 
           {/* Right actions */}
           <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-400 hover:text-slate-200 transition-colors">
+            <button className="p-2 text-white/50 hover:text-white transition-colors">
               <Moon className="w-5 h-5" />
             </button>
           </div>
@@ -110,7 +110,7 @@ export default function DocsWrapper({ attributes, children }: Props) {
 
       <div className="flex">
         {/* Left Sidebar */}
-        <aside className="w-64 shrink-0 border-r border-slate-800 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto hidden lg:block bg-slate-950">
+        <aside className="w-64 shrink-0 border-r border-white/10 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto hidden lg:block bg-[#1a1a1a]">
           <DocsSidenav />
         </aside>
 
@@ -119,14 +119,14 @@ export default function DocsWrapper({ attributes, children }: Props) {
           <div className="max-w-4xl mx-auto px-8 py-10">
             {/* Breadcrumb */}
             {currentSection && (
-              <div className="text-sm text-emerald-500 font-medium mb-2">
+              <div className="text-sm text-blue-400 font-medium mb-2">
                 {currentSection.title}
               </div>
             )}
 
             {/* Page Title */}
             {typeof attributes.name === 'string' && (
-              <h1 className="text-4xl font-bold text-slate-100 mb-6">
+              <h1 className="text-4xl font-bold text-white mb-6">
                 {attributes.name}
               </h1>
             )}
@@ -142,8 +142,8 @@ export default function DocsWrapper({ attributes, children }: Props) {
         <aside className="w-64 shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto hidden xl:block">
           {toc.length > 0 && (
             <div className="py-8 px-4">
-              <h4 className="text-sm font-semibold text-slate-400 mb-4 flex items-center gap-2">
-                <span className="text-slate-500">=</span>
+              <h4 className="text-sm font-semibold text-white/50 mb-4 flex items-center gap-2">
+                <span className="text-white/30">=</span>
                 On this page
               </h4>
               <nav className="space-y-1">
@@ -155,8 +155,8 @@ export default function DocsWrapper({ attributes, children }: Props) {
                       item.level === 3 ? 'pl-4' : ''
                     } ${
                       activeId === item.id
-                        ? 'text-emerald-400'
-                        : 'text-slate-500 hover:text-slate-300'
+                        ? 'text-blue-400'
+                        : 'text-white/40 hover:text-white/70'
                     }`}
                   >
                     {item.text}

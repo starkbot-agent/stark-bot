@@ -637,7 +637,11 @@ impl MessageDispatcher {
                     session_id,
                     context.mode_iterations
                 );
-                Orchestrator::from_context(context)
+                let mut orch = Orchestrator::from_context(context);
+                // Clear active skill at the start of each new message to prevent stale skills
+                // from being used. Skills should only be active for the turn they were invoked.
+                orch.clear_active_skill();
+                orch
             }
             Ok(None) => {
                 log::info!(
@@ -810,32 +814,21 @@ impl MessageDispatcher {
         self.create_skill_tool_definition_for_subtype(AgentSubtype::Finance)
     }
 
-    /// Create a "use_skill" tool definition filtered by agent subtype
+    /// Create a "use_skill" tool definition showing ALL enabled skills
+    /// (no subtype filtering - AI can see all skills and switch subtypes if needed)
     fn create_skill_tool_definition_for_subtype(
         &self,
-        subtype: AgentSubtype,
+        _subtype: AgentSubtype,
     ) -> Option<ToolDefinition> {
         use crate::tools::{PropertySchema, ToolGroup, ToolInputSchema};
 
         let skills = self.db.list_enabled_skills().ok()?;
-        let allowed_tags = subtype.allowed_skill_tags();
 
-        // Filter skills by subtype tags
-        let active_skills: Vec<_> = skills
-            .iter()
-            .filter(|s| {
-                s.enabled
-                    && s.tags
-                        .iter()
-                        .any(|t| allowed_tags.contains(&t.as_str()))
-            })
-            .collect();
-
-        if active_skills.is_empty() {
+        if skills.is_empty() {
             return None;
         }
 
-        let skill_names: Vec<String> = active_skills.iter().map(|s| s.name.clone()).collect();
+        let skill_names: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
 
         let mut properties = std::collections::HashMap::new();
         properties.insert(
@@ -860,7 +853,7 @@ impl MessageDispatcher {
         );
 
         // Format skill descriptions with newlines for better readability
-        let formatted_skills = active_skills
+        let formatted_skills = skills
             .iter()
             .map(|s| format!("  - {}: {}", s.name, s.description))
             .collect::<Vec<_>>()
@@ -2476,6 +2469,9 @@ impl MessageDispatcher {
             None
         };
 
+        // Get cancellation token for immediate interruption
+        let cancel_token = self.execution_tracker.get_cancellation_token(channel_id);
+
         // Spawn the actual AI request
         let ai_future = client.generate_with_tools(conversation, tool_history, tools.clone());
         tokio::pin!(ai_future);
@@ -2495,12 +2491,19 @@ impl MessageDispatcher {
         ];
         let mut phase_idx = 0;
 
-        // Create a cancellation check interval (check every 500ms for responsiveness)
-        let mut cancel_ticker = interval(Duration::from_millis(500));
-        cancel_ticker.tick().await; // First tick is immediate, skip it
-
         loop {
             tokio::select! {
+                // Highest priority: check for cancellation via token (immediate)
+                _ = cancel_token.cancelled() => {
+                    log::info!("[AI_PROGRESS] Execution cancelled via token while waiting for AI response");
+
+                    // Complete the thinking task
+                    if let Some(ref task_id) = thinking_task_id {
+                        self.execution_tracker.complete_task(task_id);
+                    }
+
+                    return Err("Execution cancelled by user".to_string());
+                }
                 result = &mut ai_future => {
                     // Complete the thinking task
                     if let Some(ref task_id) = thinking_task_id {
@@ -2556,24 +2559,6 @@ impl MessageDispatcher {
                             task_id,
                             &format!("{} ({}s)", phase_msg, elapsed_secs),
                         );
-                    }
-                }
-                _ = cancel_ticker.tick() => {
-                    // Check if execution was cancelled
-                    if self.execution_tracker.is_cancelled(channel_id) {
-                        log::info!("[AI_PROGRESS] Execution cancelled while waiting for AI response");
-
-                        // Complete the thinking task
-                        if let Some(ref task_id) = thinking_task_id {
-                            self.execution_tracker.complete_task(task_id);
-                        }
-
-                        broadcaster.broadcast(GatewayEvent::agent_error(
-                            channel_id,
-                            "Execution stopped by user.",
-                        ));
-
-                        return Err("Execution cancelled by user".to_string());
                     }
                 }
             }

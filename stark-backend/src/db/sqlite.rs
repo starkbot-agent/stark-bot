@@ -112,6 +112,7 @@ impl Database {
                 model_archetype TEXT NOT NULL DEFAULT 'kimi',
                 max_tokens INTEGER NOT NULL DEFAULT 40000,
                 enabled INTEGER NOT NULL DEFAULT 0,
+                secret_key TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )",
@@ -157,6 +158,20 @@ impl Database {
 
         if !has_max_tokens {
             conn.execute("ALTER TABLE agent_settings ADD COLUMN max_tokens INTEGER DEFAULT 40000", [])?;
+        }
+
+        // Migration: Add secret_key column if it doesn't exist (for old DBs)
+        let has_secret_key: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('agent_settings') WHERE name='secret_key'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_secret_key {
+            conn.execute("ALTER TABLE agent_settings ADD COLUMN secret_key TEXT", [])?;
         }
 
         // Migration: Add web3_tx_requires_confirmation column to bot_settings if it doesn't exist

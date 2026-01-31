@@ -1,5 +1,7 @@
 # StarkBot
 
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/ethereumdegen/stark-bot/tree/master)
+
 A cloud-deployable agentic assistant built with Rust and Actix. StarkBot acts as an intelligent automation hub that can interface with messaging platforms (WhatsApp, Slack), email services (Gmail), and more. Deploy it to the cloud and let it handle conversations, automate workflows, and integrate with your favorite services.
 
 **Key Features:**

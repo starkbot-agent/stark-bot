@@ -68,15 +68,24 @@ impl AiClient {
         settings: &AgentSettings,
         burner_private_key: Option<&str>,
     ) -> Result<Self, String> {
+        use crate::x402::is_x402_endpoint;
+
         // Get archetype to determine default model
         let archetype_id = Self::infer_archetype(settings);
         let registry = ArchetypeRegistry::new();
         let archetype = registry.get(archetype_id).unwrap_or_else(|| registry.default_archetype());
         let model = archetype.default_model();
 
-        // All x402 endpoints use OpenAI-compatible client
+        // Determine API key: x402 endpoints don't need one, others use secret_key
+        let api_key = if is_x402_endpoint(&settings.endpoint) {
+            ""  // x402 endpoints use crypto signatures, no API key needed
+        } else {
+            settings.secret_key.as_deref().unwrap_or("")
+        };
+
+        // All endpoints use OpenAI-compatible client
         let client = OpenAIClient::new_with_x402_and_tokens(
-            "",  // No API key needed for x402 endpoints
+            api_key,
             Some(&settings.endpoint),
             Some(model),
             burner_private_key,

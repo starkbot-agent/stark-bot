@@ -31,6 +31,7 @@ pub enum EventType {
     ExecutionTaskUpdated,
     ExecutionTaskCompleted,
     ExecutionCompleted,
+    ExecutionStopped,
     // Payment events
     X402Payment,
     // Confirmation events
@@ -90,6 +91,7 @@ impl EventType {
             Self::ExecutionTaskUpdated => "execution.task_updated",
             Self::ExecutionTaskCompleted => "execution.task_completed",
             Self::ExecutionCompleted => "execution.completed",
+            Self::ExecutionStopped => "execution.stopped",
             Self::X402Payment => "x402.payment",
             Self::ConfirmationRequired => "confirmation.required",
             Self::ConfirmationApproved => "confirmation.approved",
@@ -529,6 +531,19 @@ impl GatewayEvent {
                     "tokens_used": total_metrics.tokens_used,
                     "duration_ms": total_metrics.duration_ms
                 }
+            }),
+        )
+    }
+
+    /// Execution stopped by user
+    pub fn execution_stopped(channel_id: i64, execution_id: &str, reason: &str) -> Self {
+        Self::new(
+            EventType::ExecutionStopped,
+            serde_json::json!({
+                "channel_id": channel_id,
+                "execution_id": execution_id,
+                "reason": reason,
+                "timestamp": chrono::Utc::now().to_rfc3339()
             }),
         )
     }

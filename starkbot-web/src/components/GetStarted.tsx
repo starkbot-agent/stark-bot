@@ -20,77 +20,77 @@ const steps = [
 
 export function GetStarted() {
   return (
-    <section className="py-20 px-6 bg-slate-900/30">
+    <section className="py-20 px-6 bg-white/[0.02]">
       <div className="max-w-5xl mx-auto text-center">
-        <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-          <span className="gradient-text">Get Started in Minutes</span>
+        <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
+          Get Started in Minutes
         </h2>
-        <p className="text-slate-400 mb-16 max-w-2xl mx-auto">
+        <p className="text-white/50 mb-16 max-w-2xl mx-auto">
           Self-host your Web3-native AI with Docker or deploy to the cloud
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           {steps.map((step) => (
             <div key={step.number}>
-              <div className="w-12 h-12 bg-stark-500 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
+              <div className="w-12 h-12 border-2 border-white/20 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4 text-white">
                 {step.number}
               </div>
-              <h3 className="text-xl font-bold mb-2">{step.title}</h3>
-              <p className="text-slate-400">{step.description}</p>
+              <h3 className="text-xl font-bold mb-2 text-white">{step.title}</h3>
+              <p className="text-white/50">{step.description}</p>
             </div>
           ))}
         </div>
 
         {/* Docker Code Block */}
-        <div className="bg-slate-950 rounded-xl border border-slate-800 p-6 text-left max-w-2xl mx-auto">
+        <div className="bg-black/50 rounded-xl border border-white/10 p-6 text-left max-w-2xl mx-auto">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-3 h-3 bg-red-500 rounded-full" />
-            <div className="w-3 h-3 bg-yellow-500 rounded-full" />
-            <div className="w-3 h-3 bg-green-500 rounded-full" />
-            <span className="ml-2 text-slate-500 text-sm">terminal</span>
+            <div className="w-3 h-3 bg-white/20 rounded-full" />
+            <div className="w-3 h-3 bg-white/20 rounded-full" />
+            <div className="w-3 h-3 bg-white/20 rounded-full" />
+            <span className="ml-2 text-white/30 text-sm">terminal</span>
           </div>
-          <code className="text-sm text-slate-300 font-mono block space-y-1">
-            <div><span className="text-stark-400">$</span> git clone https://github.com/ethereumdegen/stark-bot</div>
-            <div><span className="text-stark-400">$</span> cd stark-bot</div>
-            <div><span className="text-stark-400">$</span> cp .env.example .env</div>
-            <div><span className="text-stark-400">$</span> docker compose up -d</div>
+          <code className="text-sm text-white font-mono block space-y-1">
+            <div><span className="text-white/40">$</span> git clone https://github.com/ethereumdegen/stark-bot</div>
+            <div><span className="text-white/40">$</span> cd stark-bot</div>
+            <div><span className="text-white/40">$</span> cp .env.example .env</div>
+            <div><span className="text-white/40">$</span> docker compose up -d</div>
           </code>
         </div>
 
         {/* DigitalOcean Section */}
         <div className="mt-20">
-          <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-            <span className="gradient-text">Deploy to the Cloud</span>
+          <h3 className="text-2xl sm:text-3xl font-bold mb-4 text-white">
+            Deploy to the Cloud
           </h3>
-          <p className="text-slate-400 mb-8 max-w-2xl mx-auto">
+          <p className="text-white/50 mb-8 max-w-2xl mx-auto">
             Deploy StarkBot directly to DigitalOcean App Platform for a fully managed, serverless experience
           </p>
 
-          <div className="bg-slate-900/50 backdrop-blur-sm rounded-2xl border border-slate-800 p-8 max-w-2xl mx-auto">
+          <div className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-8 max-w-2xl mx-auto">
             <div className="flex items-center justify-center gap-3 mb-6">
-              <Cloud className="w-8 h-8 text-stark-400" />
-              <span className="text-xl font-bold">DigitalOcean App Platform</span>
+              <Cloud className="w-8 h-8 text-white/70" />
+              <span className="text-xl font-bold text-white">DigitalOcean App Platform</span>
             </div>
 
-            <ol className="text-left text-slate-400 space-y-4 mb-8">
+            <ol className="text-left text-white/60 space-y-4 mb-8">
               <li className="flex gap-3">
-                <span className="text-stark-400 font-bold">1.</span>
-                <span>Fork the <a href="https://github.com/ethereumdegen/stark-bot" target="_blank" rel="noopener noreferrer" className="text-stark-400 hover:text-stark-300 underline">stark-bot repository</a> to your GitHub account</span>
+                <span className="text-white/40 font-bold">1.</span>
+                <span>Fork the <a href="https://github.com/ethereumdegen/stark-bot" target="_blank" rel="noopener noreferrer" className="text-white hover:text-white/80 underline">stark-bot repository</a> to your GitHub account</span>
               </li>
               <li className="flex gap-3">
-                <span className="text-stark-400 font-bold">2.</span>
-                <span>Go to <a href="https://cloud.digitalocean.com/apps" target="_blank" rel="noopener noreferrer" className="text-stark-400 hover:text-stark-300 underline">DigitalOcean App Platform</a> and click "Create App"</span>
+                <span className="text-white/40 font-bold">2.</span>
+                <span>Go to <a href="https://cloud.digitalocean.com/apps" target="_blank" rel="noopener noreferrer" className="text-white hover:text-white/80 underline">DigitalOcean App Platform</a> and click "Create App"</span>
               </li>
               <li className="flex gap-3">
-                <span className="text-stark-400 font-bold">3.</span>
+                <span className="text-white/40 font-bold">3.</span>
                 <span>Connect your GitHub and select the forked repository</span>
               </li>
               <li className="flex gap-3">
-                <span className="text-stark-400 font-bold">4.</span>
+                <span className="text-white/40 font-bold">4.</span>
                 <span>Configure environment variables (API keys, DeFi Relay x402 facilitator)</span>
               </li>
               <li className="flex gap-3">
-                <span className="text-stark-400 font-bold">5.</span>
+                <span className="text-white/40 font-bold">5.</span>
                 <span>Deploy! DigitalOcean auto-detects the Dockerfile</span>
               </li>
             </ol>
