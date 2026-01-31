@@ -2,24 +2,24 @@
 
 [![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/ethereumdegen/stark-bot/tree/master)
 
-A cloud-deployable agentic assistant built with Rust and Actix. StarkBot acts as an intelligent automation hub that can interface with messaging platforms (WhatsApp, Slack), email services (Gmail), and more. Deploy it to the cloud and let it handle conversations, automate workflows, and integrate with your favorite services.
+A cloud-deployable agentic AI assistant built with Rust and Actix. StarkBot is an intelligent automation hub that interfaces with messaging platforms, executes blockchain transactions, and handles complex multi-step tasks autonomously.
 
 **Key Features:**
-- Multi-platform messaging integration (WhatsApp, Slack, Gmail, and more)
-- Agentic AI capabilities for intelligent conversation handling
-- SIWE (Sign In With Ethereum) wallet authentication
-- Secure session management with SQLite storage
-- Easy cloud deployment (DigitalOcean, AWS, etc.)
-- Hot-reload development environment
+- **Multi-platform messaging**: Discord, Slack, Telegram integration
+- **Skills system**: Extensible markdown-based skills for code review, deployments, trading, and more
+- **Web3 native**: Token swaps, wallet management, transaction execution on EVM chains
+- **Memory & continuity**: Persistent memory system with daily logs and user preferences
+- **Tool execution**: File operations, git workflows, web fetching, shell commands
+- **SIWE authentication**: Sign In With Ethereum wallet authentication
+- **Scheduling**: Cron-based task scheduling for automated workflows
+- **x402 protocol**: Support for HTTP 402 micropayments
+- **Easy deployment**: DigitalOcean, AWS, Docker support
 
+<img width="1351" height="646" alt="Starkbot1" src="https://github.com/user-attachments/assets/4e66b1ce-59f7-405c-9353-67a8bead4868" />
 
+## Use at your own risk 
 
-
-## Starkbot is in early BETA 
-
- <img width="1453" height="1018" alt="image" src="https://github.com/user-attachments/assets/2e51cf69-9c77-4610-a392-41ebd21993a5" />
-
-
+AI Agents that directly interface with private keys always pose a serious risk. Use small amounts of cryptocurrency. Guard rails are built in to StarkBot but no guarantee is given that your funds will be safe. Significant testing has NOT been done with this tool - there is no assumption of safety or liability.
 
 ## Local Development
 
@@ -27,16 +27,7 @@ A cloud-deployable agentic assistant built with Rust and Actix. StarkBot acts as
 
 - Rust 1.88+ (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`)
 - SQLite3 (usually pre-installed on Linux)
- 
-
-
-Or just use any random password.   It should be long and secure as the endpoint will be available to the global internet.  
-
-
-This is the only required ENV var (SECRET_KEY) and it is used to log in to the bot.  
-
-
-
+- Node.js 18+ (for frontend development)
 
 ### Environment Setup
 
@@ -217,9 +208,6 @@ docker compose -f docker-compose.dev.yml logs -f
 
 
 
-
-
-
 ### Stop Development Environment
 
 ```bash
@@ -322,52 +310,141 @@ doctl apps create --spec .do/app.yaml
 ## Project Structure
 
 ```
-starkbot/
+starkbot-monorepo/
 ├── Cargo.toml                 # Workspace manifest
 ├── Dockerfile                 # Production multi-stage build
 ├── Dockerfile.dev             # Development build with hot reload
 ├── docker-compose.yml         # Production Docker Compose
 ├── docker-compose.dev.yml     # Dev environment with volume mounts
-├── stark-backend/             # Actix web server
+├── SOUL.md                    # Agent identity and personality config
+├── skills/                    # Markdown-based skill definitions
+│   ├── bankr.md               # Bankr token trading
+│   ├── polymarket.md          # Polymarket predictions
+│   ├── swap.md                # DEX token swaps
+│   ├── github.md              # GitHub integration
+│   ├── discord.md             # Discord operations
+│   └── ...                    # 20+ skills available
+├── stark-backend/             # Actix web server (Rust)
 │   └── src/
 │       ├── main.rs            # Server entry point
 │       ├── config.rs          # Environment config
-│       ├── db/sqlite.rs       # SQLite + sessions
+│       ├── ai/                # AI agent logic
+│       ├── channels/          # Discord, Slack, Telegram integrations
 │       ├── controllers/       # API endpoints
-│       └── middleware/        # Auth middleware
-└── stark-frontend/            # Static frontend
-    ├── index.html             # Login page
-    ├── dashboard.html         # Protected dashboard
-    ├── agent-chat.html        # Agent conversation interface
-    ├── css/styles.css
-    └── js/
+│       ├── db/                # SQLite database
+│       ├── execution/         # Tool execution engine
+│       ├── gateway/           # WebSocket gateway
+│       ├── memory/            # Agent memory system
+│       ├── scheduler/         # Cron scheduling
+│       ├── skills/            # Skill loading and parsing
+│       └── tools/builtin/     # 35+ built-in tools
+└── stark-frontend/            # React/TypeScript frontend
+    └── src/
+        ├── components/        # Reusable UI components
+        ├── pages/             # Application pages
+        └── views/             # Chat and dashboard views
 ```
 
+## Skills System
 
+StarkBot uses a powerful markdown-based skills system. Skills define capabilities and workflows the agent can execute.
 
+### Built-in Skills
 
-## Ai Agent 
+| Skill | Description |
+|-------|-------------|
+| `bankr` | Trade tokens on Bankr (Base network) |
+| `polymarket` | Interact with Polymarket prediction markets |
+| `swap` | Execute token swaps on DEXs |
+| `transfer` | Send tokens and ETH |
+| `github` | GitHub repository operations |
+| `discord` | Discord channel management |
+| `moltbook` | Moltbook integrations |
+| `moltx` | MoltX trading |
+| `code-review` | Automated code review |
+| `commit` | Git commit workflows |
+| `deploy-github` | Deploy to GitHub Pages |
+| `create-project` | Scaffold new projects |
+| `create-skill` | Create new skills |
+| `scheduling` | Set up cron-based tasks |
+| `weather` | Weather lookups |
+| `token_price` | Cryptocurrency price checks |
+| `local_wallet` | Local wallet management |
+| `weth` | WETH wrap/unwrap operations |
 
-It is acceptable to use stark-bot with a Digitalocean Agent, such as one using the llama-33-instruct model.
+### Installing Custom Skills
 
+Skills can be installed through the web UI:
+1. Navigate to **Skills** in the sidebar
+2. Upload a `.md` file or `.zip` archive
+3. Skills are immediately available to the agent
 
-In this case, input the following for Agent Settings 
+Skill format follows the Claude Code / Clawd skill specification.
 
+## Built-in Tools
+
+The agent has access to 35+ built-in tools:
+
+**File Operations**: `read_file`, `write_file`, `edit_file`, `delete_file`, `rename_file`, `glob`, `grep`, `list_files`
+
+**Git & Code**: `git`, `committer`, `pr_quality`, `apply_patch`
+
+**Memory**: `memory_store`, `memory_get`, `multi_memory_search`
+
+**Web3**: `web3_tx`, `web3_function_call`, `token_lookup`
+
+**Communication**: `say_to_user`, `ask_user`, `agent_send`, `discord_lookup`
+
+**System**: `exec`, `process_status`, `task_complete`, `subagent`
+
+**Web**: `web_fetch`, `x402_fetch`, `x402_rpc`
+
+## AI Provider Configuration
+
+StarkBot works with OpenAI-compatible APIs. API keys are managed through the web UI under **API Keys**.
+
+### Using Anthropic Claude
+
+Get an API key from [console.anthropic.com](https://console.anthropic.com/) and add it in the API Keys settings.
+
+### Using DigitalOcean AI Agents
+
+Compatible with DigitalOcean's hosted models (e.g., llama-33-instruct):
 
 ```
-
-
-
-Provider Type  : openAi Compatible 
-Api Endpoint URI : https://xxxxxxxxxxxxxxxxx.agents.do-ai.run/api/v1/chat/completions
-API Key :   xxxxxxxxxxxxxxxxxx   (access key)
-
-
+Provider Type    : OpenAI Compatible
+API Endpoint URI : https://xxxxxxxxx.agents.do-ai.run/api/v1/chat/completions
+API Key          : your-access-key
 ```
 
+## Messaging Integrations
 
+StarkBot can connect to multiple messaging platforms simultaneously:
 
+| Platform | Status | Configuration |
+|----------|--------|---------------|
+| Discord | ✅ Supported | Bot token in API Keys |
+| Slack | ✅ Supported | App credentials in API Keys |
+| Telegram | ✅ Supported | Bot token in API Keys |
+| Web Chat | ✅ Built-in | Available at dashboard |
 
-## Custom skills
+## Memory & Continuity
 
-Standard claude skills / clawd skills can be installed using the Skills page- either a zip file or md file.  
+StarkBot maintains persistent memory across sessions:
+
+- **Long-term memory**: Facts about users, preferences, important context
+- **Daily logs**: Session notes, decisions, follow-ups
+- **Session history**: Recent conversation context
+
+Memory is automatically stored when the agent uses markers like `[REMEMBER: fact]` or `[DAILY_LOG: note]` in responses.
+
+## Agent Identity (SOUL.md)
+
+The `SOUL.md` file defines StarkBot's personality and behavior guidelines. Key principles:
+
+- **Action over words**: Solve problems, don't narrate them
+- **Genuine assistance**: Skip corporate phrases, just help
+- **Have opinions**: Disagree when something is a bad idea
+- **Respect the access**: Handle API keys and user data with care
+
+You can customize `SOUL.md` to adjust the agent's personality for your use case.
