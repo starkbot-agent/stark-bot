@@ -1065,6 +1065,7 @@ impl MessageDispatcher {
         let mut final_summary = String::new();
         let mut waiting_for_user_response = false;
         let mut user_question_content = String::new();
+        let mut was_cancelled = false;
 
         loop {
             iterations += 1;
@@ -1105,9 +1106,10 @@ impl MessageDispatcher {
                 }
             }
 
-            // Check if execution was cancelled (e.g., user sent /new)
+            // Check if execution was cancelled (e.g., user sent /new or stop button)
             if self.execution_tracker.is_cancelled(original_message.channel_id) {
                 log::info!("[ORCHESTRATED_LOOP] Execution cancelled by user, stopping loop");
+                was_cancelled = true;
                 break;
             }
 
@@ -1299,13 +1301,38 @@ impl MessageDispatcher {
             }
 
             // Generate with native tool support and progress notifications
-            let ai_response = self.generate_with_progress(
+            let ai_response = match self.generate_with_progress(
                 &client,
                 conversation.clone(),
                 tool_history.clone(),
                 current_tools.clone(),
                 original_message.channel_id,
-            ).await?;
+            ).await {
+                Ok(response) => response,
+                Err(e) => {
+                    // AI generation failed - save summary of work done so far
+                    if !tool_call_log.is_empty() {
+                        let summary = format!(
+                            "[Session interrupted by error. Work completed before failure:]\n{}\n\nError: {}",
+                            tool_call_log.join("\n"),
+                            e
+                        );
+                        log::info!("[ORCHESTRATED_LOOP] Saving error summary with {} tool calls", tool_call_log.len());
+                        let _ = self.db.add_session_message(
+                            session_id,
+                            DbMessageRole::Assistant,
+                            &summary,
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+                    }
+                    // Save context before returning error
+                    let _ = self.db.save_agent_context(session_id, orchestrator.context());
+                    return Err(e);
+                }
+            };
 
             log::info!(
                 "[ORCHESTRATED_LOOP] Response - content_len: {}, tool_calls: {}",
@@ -1726,6 +1753,26 @@ impl MessageDispatcher {
             log::warn!("[MULTI_AGENT] Failed to save context for session {}: {}", session_id, e);
         }
 
+        // If cancelled with work done, save a summary so context is preserved on resume
+        if was_cancelled && !tool_call_log.is_empty() {
+            let summary = format!(
+                "[Session stopped by user. Work completed before stop:]\n{}",
+                tool_call_log.join("\n")
+            );
+            log::info!("[ORCHESTRATED_LOOP] Saving cancellation summary with {} tool calls", tool_call_log.len());
+            if let Err(e) = self.db.add_session_message(
+                session_id,
+                DbMessageRole::Assistant,
+                &summary,
+                None,
+                None,
+                None,
+                None,
+            ) {
+                log::error!("Failed to save cancellation summary: {}", e);
+            }
+        }
+
         // Return final response
         if waiting_for_user_response {
             // Save the tool call log to the orchestrator context so the AI knows what it already did
@@ -1751,11 +1798,24 @@ impl MessageDispatcher {
                 max_tool_iterations
             ))
         } else {
-            let tool_log_text = tool_call_log.join("\n");
+            // Max iterations with work done - save summary so context is preserved
+            let summary = format!(
+                "[Session hit max iterations. Work completed before limit:]\n{}",
+                tool_call_log.join("\n")
+            );
+            log::info!("[ORCHESTRATED_LOOP] Saving max-iterations summary with {} tool calls", tool_call_log.len());
+            let _ = self.db.add_session_message(
+                session_id,
+                DbMessageRole::Assistant,
+                &summary,
+                None,
+                None,
+                None,
+                None,
+            );
             Err(format!(
-                "Tool loop hit max iterations ({}). Last tool calls:\n{}",
-                max_tool_iterations,
-                tool_log_text
+                "Tool loop hit max iterations ({}). Work has been saved.",
+                max_tool_iterations
             ))
         }
     }
@@ -1800,6 +1860,7 @@ impl MessageDispatcher {
         let mut orchestrator_complete = false;
         let mut waiting_for_user_response = false;
         let mut user_question_content = String::new();
+        let mut was_cancelled = false;
 
         loop {
             iterations += 1;
@@ -1809,9 +1870,10 @@ impl MessageDispatcher {
                 orchestrator.current_mode()
             );
 
-            // Check if execution was cancelled (e.g., user sent /new)
+            // Check if execution was cancelled (e.g., user sent /new or stop button)
             if self.execution_tracker.is_cancelled(original_message.channel_id) {
                 log::info!("[TEXT_ORCHESTRATED] Execution cancelled by user, stopping loop");
+                was_cancelled = true;
                 break;
             }
 
@@ -1872,11 +1934,36 @@ impl MessageDispatcher {
                 }
             }
 
-            let (ai_content, payment) = client.generate_text_with_events(
+            let (ai_content, payment) = match client.generate_text_with_events(
                 conversation.clone(),
                 &self.broadcaster,
                 original_message.channel_id,
-            ).await?;
+            ).await {
+                Ok(result) => result,
+                Err(e) => {
+                    // AI generation failed - save summary of work done so far
+                    if !tool_call_log.is_empty() {
+                        let summary = format!(
+                            "[Session interrupted by error. Work completed before failure:]\n{}\n\nError: {}",
+                            tool_call_log.join("\n"),
+                            e
+                        );
+                        log::info!("[TEXT_ORCHESTRATED] Saving error summary with {} tool calls", tool_call_log.len());
+                        let _ = self.db.add_session_message(
+                            session_id,
+                            DbMessageRole::Assistant,
+                            &summary,
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+                    }
+                    // Save context before returning error
+                    let _ = self.db.save_agent_context(session_id, orchestrator.context());
+                    return Err(e);
+                }
+            };
 
             if let Some(ref payment_info) = payment {
                 let _ = self.db.record_x402_payment(
@@ -2240,6 +2327,26 @@ impl MessageDispatcher {
             log::warn!("[MULTI_AGENT] Failed to save context for session {}: {}", session_id, e);
         }
 
+        // If cancelled with work done, save a summary so context is preserved on resume
+        if was_cancelled && !tool_call_log.is_empty() {
+            let summary = format!(
+                "[Session stopped by user. Work completed before stop:]\n{}",
+                tool_call_log.join("\n")
+            );
+            log::info!("[TEXT_ORCHESTRATED] Saving cancellation summary with {} tool calls", tool_call_log.len());
+            if let Err(e) = self.db.add_session_message(
+                session_id,
+                DbMessageRole::Assistant,
+                &summary,
+                None,
+                None,
+                None,
+                None,
+            ) {
+                log::error!("Failed to save cancellation summary: {}", e);
+            }
+        }
+
         // If waiting for user response, save context and return the question content
         if waiting_for_user_response {
             // Save the tool call log to the orchestrator context so the AI knows what it already did
@@ -2258,6 +2365,23 @@ impl MessageDispatcher {
         }
 
         if final_response.is_empty() {
+            // Empty response with work done - save summary
+            if !tool_call_log.is_empty() {
+                let summary = format!(
+                    "[Session ended with empty response. Work completed:]\n{}",
+                    tool_call_log.join("\n")
+                );
+                log::info!("[TEXT_ORCHESTRATED] Saving empty-response summary with {} tool calls", tool_call_log.len());
+                let _ = self.db.add_session_message(
+                    session_id,
+                    DbMessageRole::Assistant,
+                    &summary,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+            }
             return Err("AI returned empty response".to_string());
         }
 

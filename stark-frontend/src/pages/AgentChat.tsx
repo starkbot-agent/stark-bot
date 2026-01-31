@@ -1105,21 +1105,16 @@ export default function AgentChat() {
           <div
             className="flex items-center gap-2 bg-slate-700/50 px-2 py-1 rounded cursor-pointer hover:bg-slate-600/50 transition-colors"
             onClick={() => navigate('/sessions')}
-            title="View all chat sessions"
+            title={connected ? 'Connected - View all chat sessions' : 'Disconnected - View all chat sessions'}
           >
-            <span className="text-xs text-slate-500">Session:</span>
-            <span className="text-xs font-mono text-slate-300">
-              {dbSessionId ? dbSessionId.toString(16).padStart(8, '0') : sessionId.slice(0, 8)}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full ${
                 connected ? 'bg-green-400' : 'bg-red-400'
               }`}
             />
-            <span className="text-sm text-slate-400">
-              {connected ? 'Connected' : 'Disconnected'}
+            <span className="text-xs text-slate-500">Session:</span>
+            <span className="text-xs font-mono text-slate-300">
+              {dbSessionId ? dbSessionId.toString(16).padStart(8, '0') : sessionId.slice(0, 8)}
             </span>
           </div>
           {/* Agent Mode Badge */}
