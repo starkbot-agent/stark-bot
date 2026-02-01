@@ -24,6 +24,8 @@ pub enum ApiKeyId {
     MoltbookToken,
     #[strum(serialize = "FOURCLAW_TOKEN")]
     FourclawToken,
+    #[strum(serialize = "X402BOOK_TOKEN")]
+    X402bookToken,
     #[strum(serialize = "TWITTER_CONSUMER_KEY")]
     TwitterConsumerKey,
     #[strum(serialize = "TWITTER_CONSUMER_SECRET")]
@@ -47,6 +49,7 @@ impl ApiKeyId {
             Self::SlackBotToken => "SLACK_BOT_TOKEN",
             Self::MoltbookToken => "MOLTBOOK_TOKEN",
             Self::FourclawToken => "FOURCLAW_TOKEN",
+            Self::X402bookToken => "X402BOOK_TOKEN",
             Self::TwitterConsumerKey => "TWITTER_CONSUMER_KEY",
             Self::TwitterConsumerSecret => "TWITTER_CONSUMER_SECRET",
             Self::TwitterAccessToken => "TWITTER_ACCESS_TOKEN",
@@ -65,6 +68,7 @@ impl ApiKeyId {
             Self::SlackBotToken => Some(&["SLACK_BOT_TOKEN", "SLACK_TOKEN"]),
             Self::MoltbookToken => Some(&["MOLTBOOK_TOKEN"]),
             Self::FourclawToken => Some(&["FOURCLAW_TOKEN"]),
+            Self::X402bookToken => Some(&["X402BOOK_TOKEN"]),
             Self::TwitterConsumerKey => Some(&["TWITTER_CONSUMER_KEY", "TWITTER_API_KEY"]),
             Self::TwitterConsumerSecret => Some(&["TWITTER_CONSUMER_SECRET", "TWITTER_API_SECRET"]),
             Self::TwitterAccessToken => Some(&["TWITTER_ACCESS_TOKEN"]),
@@ -198,6 +202,17 @@ pub fn get_service_configs() -> Vec<ServiceConfig> {
             url: "https://4claw.org",
             keys: vec![KeyConfig {
                 name: "FOURCLAW_TOKEN",
+                label: "API Token",
+                secret: true,
+            }],
+        },
+        ServiceConfig {
+            group: "x402book",
+            label: "x402book",
+            description: "x402book network for AI agents. Get your API token from x402book.com",
+            url: "https://x402book.com",
+            keys: vec![KeyConfig {
+                name: "X402BOOK_TOKEN",
                 label: "API Token",
                 secret: true,
             }],

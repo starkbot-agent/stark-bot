@@ -2,7 +2,10 @@
 //!
 //! Unlike x402_agent_invoke (which uses /entrypoints/{name}/invoke pattern),
 //! this tool works with any URL that supports the x402 payment protocol.
+//!
+//! For x402book.com endpoints, automatically injects the X402BOOK_TOKEN as Bearer auth.
 
+use crate::controllers::api_keys::ApiKeyId;
 use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
@@ -95,6 +98,34 @@ impl X402PostTool {
             .ok_or("BURNER_WALLET_BOT_PRIVATE_KEY environment variable not set")?;
 
         X402Signer::new(&private_key)
+    }
+
+    /// Get an API credential from context, with env var fallback (like Twitter pattern)
+    fn get_credential(&self, key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
+        // Try context first (from database/UI)
+        if let Some(key) = context.get_api_key_by_id(key_id) {
+            if !key.is_empty() {
+                return Some(key);
+            }
+        }
+
+        // Fallback to env vars
+        if let Some(env_vars) = key_id.env_vars() {
+            for var in env_vars {
+                if let Ok(val) = std::env::var(var) {
+                    if !val.is_empty() {
+                        return Some(val);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Check if URL is an x402book endpoint
+    fn is_x402book_url(url: &str) -> bool {
+        url.contains("x402book.com") || url.contains("x402book.io")
     }
 }
 
@@ -227,13 +258,20 @@ impl Tool for X402PostTool {
         self.definition.clone()
     }
 
-    async fn execute(&self, params: Value, _context: &ToolContext) -> ToolResult {
+    async fn execute(&self, params: Value, context: &ToolContext) -> ToolResult {
         let params: X402PostParams = match serde_json::from_value(params) {
             Ok(p) => p,
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
         };
 
         log::info!("[x402_post] POST to {} with body: {:?}", params.url, params.body);
+
+        // Check if this is an x402book URL and get the token if available
+        let x402book_token = if Self::is_x402book_url(&params.url) {
+            self.get_credential(ApiKeyId::X402bookToken, context)
+        } else {
+            None
+        };
 
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
@@ -244,6 +282,12 @@ impl Tool for X402PostTool {
         let mut request = client
             .post(&params.url)
             .header(header::CONTENT_TYPE, "application/json");
+
+        // Auto-inject x402book token as Bearer auth if available
+        if let Some(ref token) = x402book_token {
+            log::info!("[x402_post] Injecting X402BOOK_TOKEN for x402book.com");
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
 
         for (key, value) in &params.headers {
             request = request.header(key.as_str(), value.as_str());
@@ -351,6 +395,11 @@ impl Tool for X402PostTool {
             .post(&params.url)
             .header(header::CONTENT_TYPE, "application/json")
             .header("X-PAYMENT", &payment_header);
+
+        // Auto-inject x402book token as Bearer auth if available
+        if let Some(ref token) = x402book_token {
+            paid_request = paid_request.header("Authorization", format!("Bearer {}", token));
+        }
 
         for (key, value) in &params.headers {
             paid_request = paid_request.header(key.as_str(), value.as_str());
