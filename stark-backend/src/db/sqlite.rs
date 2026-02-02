@@ -898,6 +898,9 @@ impl Database {
             [],
         )?;
 
+        // Initialize discord_hooks tables
+        crate::discord_hooks::db::init_tables(&conn)?;
+
         Ok(())
     }
 

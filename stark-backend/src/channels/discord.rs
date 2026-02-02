@@ -1,5 +1,7 @@
 use crate::channels::dispatcher::MessageDispatcher;
 use crate::channels::types::{ChannelType, NormalizedMessage};
+use crate::db::Database;
+use crate::discord_hooks::{self, DiscordHooksConfig};
 use crate::gateway::events::EventBroadcaster;
 use crate::gateway::protocol::GatewayEvent;
 use crate::models::Channel;
@@ -55,6 +57,8 @@ struct DiscordHandler {
     channel_id: i64,
     dispatcher: Arc<MessageDispatcher>,
     broadcaster: Arc<EventBroadcaster>,
+    db: Arc<Database>,
+    discord_hooks_config: DiscordHooksConfig,
 }
 
 #[serenity::async_trait]
@@ -69,6 +73,66 @@ impl EventHandler for DiscordHandler {
         if text.is_empty() {
             return;
         }
+
+        // ===== Discord Hooks Integration =====
+        // Process through discord_hooks module first
+        match discord_hooks::process(&msg, &ctx, &self.db, &self.discord_hooks_config).await {
+            Ok(result) => {
+                // If module handled it with a direct response, send it and return
+                if let Some(response) = result.response {
+                    let chunks = split_message(&response, 2000);
+                    for chunk in chunks {
+                        if let Err(e) = msg.channel_id.say(&ctx.http, &chunk).await {
+                            log::error!("Discord: Failed to send hooks response: {}", e);
+                        }
+                    }
+                    return;
+                }
+
+                // If module says forward to agent, use the forwarded text
+                if let Some(forward) = result.forward_to_agent {
+                    // Continue with forwarded request (admin command)
+                    let user_name = forward.user_name;
+                    let user_id = forward.user_id;
+
+                    log::info!(
+                        "Discord: Admin command from {} ({}): {}",
+                        user_name,
+                        user_id,
+                        if forward.text.len() > 50 {
+                            format!("{}...", &forward.text[..50])
+                        } else {
+                            forward.text.clone()
+                        }
+                    );
+
+                    let normalized = NormalizedMessage {
+                        channel_id: self.channel_id,
+                        channel_type: ChannelType::Discord.to_string(),
+                        chat_id: msg.channel_id.to_string(),
+                        user_id,
+                        user_name: user_name.clone(),
+                        text: forward.text,
+                        message_id: Some(msg.id.to_string()),
+                        session_mode: None,
+                    };
+
+                    // Continue to dispatch below with this normalized message
+                    self.dispatch_and_respond(&ctx, &msg, normalized, &user_name).await;
+                    return;
+                }
+
+                // Module didn't handle it (bot not mentioned), fall through to existing behavior
+                if !result.handled {
+                    // Fall through to original behavior below
+                }
+            }
+            Err(e) => {
+                log::error!("Discord hooks error: {}", e);
+                // Fall through to original behavior
+            }
+        }
+        // ===== End Discord Hooks Integration =====
 
         let user_id = msg.author.id.to_string();
         // Discord moved away from discriminators, so just use the username
@@ -95,6 +159,24 @@ impl EventHandler for DiscordHandler {
             message_id: Some(msg.id.to_string()),
             session_mode: None,
         };
+
+        self.dispatch_and_respond(&ctx, &msg, normalized, &user_name).await;
+    }
+
+    async fn ready(&self, _ctx: Context, ready: Ready) {
+        log::info!("Discord: Bot connected as {}", ready.user.name);
+    }
+}
+
+impl DiscordHandler {
+    /// Dispatch a message to the AI and send the response
+    async fn dispatch_and_respond(
+        &self,
+        ctx: &Context,
+        msg: &Message,
+        normalized: NormalizedMessage,
+        user_name: &str,
+    ) {
 
         // Subscribe to events for real-time tool call forwarding
         let (client_id, mut event_rx) = self.broadcaster.subscribe();
@@ -208,10 +290,6 @@ impl EventHandler for DiscordHandler {
             let _ = msg.channel_id.say(&ctx.http, &error_msg).await;
         }
     }
-
-    async fn ready(&self, _ctx: Context, ready: Ready) {
-        log::info!("Discord: Bot connected as {}", ready.user.name);
-    }
 }
 
 /// Split a message into chunks respecting Discord's character limit
@@ -262,6 +340,7 @@ pub async fn start_discord_listener(
     channel: Channel,
     dispatcher: Arc<MessageDispatcher>,
     broadcaster: Arc<EventBroadcaster>,
+    db: Arc<Database>,
     mut shutdown_rx: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     let channel_id = channel.id;
@@ -276,10 +355,15 @@ pub async fn start_discord_listener(
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
 
+    // Load discord hooks config
+    let discord_hooks_config = DiscordHooksConfig::from_env();
+
     let handler = DiscordHandler {
         channel_id,
         dispatcher,
         broadcaster: broadcaster.clone(),
+        db,
+        discord_hooks_config,
     };
 
     // Create client

@@ -167,11 +167,13 @@ impl ChannelManager {
                 });
             }
             types::ChannelType::Discord => {
+                let db = self.db.clone();
                 tokio::spawn(async move {
                     let result = discord::start_discord_listener(
                         channel,
                         dispatcher,
                         broadcaster.clone(),
+                        db,
                         shutdown_rx,
                     )
                     .await;

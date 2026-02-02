@@ -1,0 +1,113 @@
+//! Configuration for Discord hooks
+
+use std::collections::HashSet;
+
+/// Configuration for the Discord hooks module
+#[derive(Debug, Clone)]
+pub struct DiscordHooksConfig {
+    /// Discord user IDs that have admin access (full agentic commands)
+    admin_user_ids: HashSet<String>,
+    /// Whether to require @mention in server channels (default: true)
+    pub require_mention_in_servers: bool,
+    /// Whether to allow DMs without @mention (default: true)
+    pub allow_dm_without_mention: bool,
+}
+
+impl DiscordHooksConfig {
+    /// Create a new config from environment variables
+    ///
+    /// Reads:
+    /// - `DISCORD_ADMIN_USER_IDS`: Comma-separated list of Discord user IDs
+    pub fn from_env() -> Self {
+        let admin_ids: HashSet<String> = std::env::var("DISCORD_ADMIN_USER_IDS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if admin_ids.is_empty() {
+            log::warn!(
+                "Discord hooks: No admin user IDs configured. \
+                Set DISCORD_ADMIN_USER_IDS env var to enable admin commands."
+            );
+        } else {
+            log::info!(
+                "Discord hooks: Configured {} admin user ID(s)",
+                admin_ids.len()
+            );
+        }
+
+        Self {
+            admin_user_ids: admin_ids,
+            require_mention_in_servers: true,
+            allow_dm_without_mention: true,
+        }
+    }
+
+    /// Create an empty config (no admins)
+    pub fn empty() -> Self {
+        Self {
+            admin_user_ids: HashSet::new(),
+            require_mention_in_servers: true,
+            allow_dm_without_mention: true,
+        }
+    }
+
+    /// Create a config with specific admin IDs
+    pub fn with_admins(admin_ids: Vec<String>) -> Self {
+        Self {
+            admin_user_ids: admin_ids.into_iter().collect(),
+            require_mention_in_servers: true,
+            allow_dm_without_mention: true,
+        }
+    }
+
+    /// Check if a user ID is an admin
+    pub fn is_admin(&self, user_id: &str) -> bool {
+        self.admin_user_ids.contains(user_id)
+    }
+
+    /// Get the number of configured admins
+    pub fn admin_count(&self) -> usize {
+        self.admin_user_ids.len()
+    }
+
+    /// Check if any admins are configured
+    pub fn has_admins(&self) -> bool {
+        !self.admin_user_ids.is_empty()
+    }
+}
+
+impl Default for DiscordHooksConfig {
+    fn default() -> Self {
+        Self::from_env()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty_config() {
+        let config = DiscordHooksConfig::empty();
+        assert!(!config.is_admin("123"));
+        assert_eq!(config.admin_count(), 0);
+        assert!(!config.has_admins());
+    }
+
+    #[test]
+    fn test_with_admins() {
+        let config = DiscordHooksConfig::with_admins(vec![
+            "123456789".to_string(),
+            "987654321".to_string(),
+        ]);
+
+        assert!(config.is_admin("123456789"));
+        assert!(config.is_admin("987654321"));
+        assert!(!config.is_admin("111111111"));
+        assert_eq!(config.admin_count(), 2);
+        assert!(config.has_admins());
+    }
+}

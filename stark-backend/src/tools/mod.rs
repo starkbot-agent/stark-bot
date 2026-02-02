@@ -75,6 +75,9 @@ fn register_all_tools(registry: &mut ToolRegistry) {
     registry.register(Arc::new(builtin::AgentSendTool::new()));
     registry.register(Arc::new(builtin::DiscordLookupTool::new()));
     registry.register(Arc::new(builtin::TwitterPostTool::new()));
+
+    // Discord hooks tools
+    registry.register(Arc::new(crate::discord_hooks::tools::DiscordResolveUserTool::new()));
 }
 
 /// Create a new ToolRegistry with all built-in tools registered
