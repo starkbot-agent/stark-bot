@@ -64,11 +64,36 @@ export default function MindMap() {
 
   // Rainbow swirl animation on heartbeat using anime.js
   const triggerHeartbeatAnimation = useCallback((nodeId: number) => {
-    if (!svgRef.current || !containerRef.current) return;
+    console.log('[Animation] triggerHeartbeatAnimation called for node:', nodeId);
+
+    if (!svgRef.current || !containerRef.current) {
+      console.log('[Animation] Missing refs - svgRef:', !!svgRef.current, 'containerRef:', !!containerRef.current);
+      return;
+    }
 
     const svg = d3.select(svgRef.current);
     const nodeGroup = svg.select(`g[data-node-id="${nodeId}"]`);
-    if (nodeGroup.empty()) return;
+    if (nodeGroup.empty()) {
+      console.log('[Animation] Node group not found for nodeId:', nodeId);
+      return;
+    }
+    console.log('[Animation] Found node group, proceeding with animation');
+
+    // Debug: show a visible marker at the animation location
+    const debugMarker = document.createElement('div');
+    debugMarker.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: lime;
+      color: black;
+      padding: 10px;
+      z-index: 9999;
+      font-weight: bold;
+    `;
+    debugMarker.textContent = 'ANIMATION TRIGGERED!';
+    document.body.appendChild(debugMarker);
+    setTimeout(() => debugMarker.remove(), 2000);
 
     // Get node position and apply current zoom transform
     const transform = nodeGroup.attr('transform');
@@ -112,120 +137,81 @@ export default function MindMap() {
     // Rainbow colors
     const colors = ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', '#0080ff', '#8000ff', '#ff00ff'];
 
-    // Create swirling noodles
-    const numNoodles = 16;
-    const noodles: HTMLDivElement[] = [];
+    // Create confetti sprinkles bursting from node
+    const numSprinkles = 30;
 
-    for (let i = 0; i < numNoodles; i++) {
-      const noodle = document.createElement('div');
+    for (let i = 0; i < numSprinkles; i++) {
+      const sprinkle = document.createElement('div');
       const color = colors[i % colors.length];
-      const angle = (i / numNoodles) * 360;
-      const startRadius = 150 + Math.random() * 50;
+      const width = 4 + Math.random() * 3;
+      const height = 12 + Math.random() * 8;
+      const angle = Math.random() * 360;
+      const distance = 80 + Math.random() * 120;
+      const endX = Math.cos(angle * Math.PI / 180) * distance;
+      const endY = Math.sin(angle * Math.PI / 180) * distance;
+      const rotation = Math.random() * 360;
 
-      noodle.style.cssText = `
+      sprinkle.style.cssText = `
         position: absolute;
-        width: 4px;
-        height: 20px;
-        background: linear-gradient(to bottom, ${color}, transparent);
-        border-radius: 2px;
-        left: -2px;
-        top: -10px;
-        transform: rotate(${angle}deg) translateY(-${startRadius}px);
-        box-shadow: 0 0 10px ${color}, 0 0 20px ${color};
-        opacity: 0;
+        width: ${width}px;
+        height: ${height}px;
+        background: ${color};
+        border-radius: ${width / 2}px;
+        left: ${-width / 2}px;
+        top: ${-height / 2}px;
+        transform: rotate(${rotation}deg);
       `;
-      animContainer.appendChild(noodle);
-      noodles.push(noodle);
-    }
 
-    // Animate noodles spiraling in
-    noodles.forEach((noodle, i) => {
-      const targetRotation = (i / numNoodles) * 360 + 720;
-      animate(noodle, {
-        translateY: 0,
-        rotate: targetRotation,
-        opacity: [0, 1, 1, 0],
-        scale: [1, 0.5],
-        duration: 1200,
-        delay: i * 40,
-        ease: 'inQuad',
-      });
-    });
+      animContainer.appendChild(sprinkle);
 
-    // Create burst particles
-    setTimeout(() => {
-      const numParticles = 24;
-      const particles: HTMLDivElement[] = [];
-
-      for (let i = 0; i < numParticles; i++) {
-        const particle = document.createElement('div');
-        const color = colors[i % colors.length];
-        const size = 6 + Math.random() * 8;
-
-        particle.style.cssText = `
-          position: absolute;
-          width: ${size}px;
-          height: ${size}px;
-          background: ${color};
-          border-radius: 50%;
-          left: ${-size / 2}px;
-          top: ${-size / 2}px;
-          box-shadow: 0 0 10px ${color}, 0 0 20px ${color}, 0 0 30px ${color};
-        `;
-        animContainer.appendChild(particle);
-        particles.push(particle);
-      }
-
-      // Burst outward
-      particles.forEach((particle, i) => {
-        animate(particle, {
-          translateX: (Math.random() - 0.5) * 200,
-          translateY: (Math.random() - 0.5) * 200,
-          scale: [1, 0],
-          opacity: [1, 0],
-          duration: 800,
-          delay: i * 20,
-          ease: 'outExpo',
-        });
-      });
-
-      // Central flash
-      const flash = document.createElement('div');
-      flash.style.cssText = `
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        background: radial-gradient(circle, white 0%, transparent 70%);
-        border-radius: 50%;
-        left: -10px;
-        top: -10px;
-        box-shadow: 0 0 30px white, 0 0 60px white;
-      `;
-      animContainer.appendChild(flash);
-
-      animate(flash, {
-        scale: [1, 8],
-        opacity: [1, 0],
-        duration: 500,
+      // Animate sprinkle bursting outward
+      animate(sprinkle, {
+        translateX: [0, endX],
+        translateY: [0, endY],
+        rotate: [rotation, rotation + (Math.random() - 0.5) * 360],
+        opacity: [1, 1, 0],
+        scale: [0, 1, 0.5],
+        duration: 800 + Math.random() * 400,
+        delay: i * 15,
         ease: 'outExpo',
       });
+    }
 
-      // Pulse the actual SVG node
-      const nodeCircle = nodeGroup.select('circle');
-      const originalRadius = nodeCircle.attr('r');
-      nodeCircle
-        .transition()
-        .duration(150)
-        .attr('r', parseFloat(originalRadius) * 1.5)
-        .transition()
-        .duration(300)
-        .attr('r', originalRadius);
+    // Central flash
+    const flash = document.createElement('div');
+    flash.style.cssText = `
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      left: -10px;
+      top: -10px;
+    `;
+    animContainer.appendChild(flash);
 
-      // Cleanup
-      setTimeout(() => {
-        animContainer.remove();
-      }, 1000);
-    }, 1000);
+    animate(flash, {
+      scale: [0, 3, 0],
+      opacity: [1, 0.8, 0],
+      duration: 400,
+      ease: 'outExpo',
+    });
+
+    // Pulse the actual SVG node
+    const nodeCircle = nodeGroup.select('circle');
+    const originalRadius = nodeCircle.attr('r');
+    nodeCircle
+      .transition()
+      .duration(150)
+      .attr('r', parseFloat(originalRadius) * 1.5)
+      .transition()
+      .duration(300)
+      .attr('r', originalRadius);
+
+    // Cleanup
+    setTimeout(() => {
+      animContainer.remove();
+    }, 1500);
   }, []);
 
   // Load graph data
@@ -287,15 +273,26 @@ export default function MindMap() {
   // Pulse once
   const [isPulsing, setIsPulsing] = useState(false);
 
-  const handlePulseOnce = () => {
+  const handlePulseOnce = async () => {
     setIsPulsing(true);
+    console.log('[MindMap] Pulse once clicked');
+
+    // Ensure gateway is connected before pulsing
+    const gateway = getGateway();
+    try {
+      await gateway.connect();
+      console.log('[MindMap] Gateway connected, sending pulse request');
+    } catch (e) {
+      console.error('[MindMap] Failed to connect gateway before pulse:', e);
+    }
 
     // Fire off the pulse request
     pulseHeartbeatOnce()
       .then(config => {
+        console.log('[MindMap] Pulse request sent successfully');
         setNextBeatAt(config.next_beat_at || null);
       })
-      .catch(e => console.error('Failed to pulse heartbeat:', e));
+      .catch(e => console.error('[MindMap] Failed to pulse heartbeat:', e));
 
     // Show loading for 2 seconds then stop
     setTimeout(() => setIsPulsing(false), 2000);
@@ -304,43 +301,67 @@ export default function MindMap() {
   // Listen for heartbeat events via WebSocket
   useEffect(() => {
     const gateway = getGateway();
+    let mounted = true;
 
     const handleHeartbeatStarted = (data: unknown) => {
       const event = data as { mind_node_id?: number };
-      console.log('[WS] Heartbeat started:', event);
-      if (event.mind_node_id) {
+      console.log('[MindMap] Heartbeat started event received:', event);
+      if (event.mind_node_id && mounted) {
+        console.log('[MindMap] Triggering animation for node:', event.mind_node_id);
         triggerHeartbeatAnimation(event.mind_node_id);
       }
     };
 
     const handleHeartbeatCompleted = async (data: unknown) => {
       const event = data as { mind_node_id?: number };
-      console.log('[WS] Heartbeat completed:', event);
+      console.log('[MindMap] Heartbeat completed event received:', event);
+      if (!mounted) return;
       // Refresh sessions list
       try {
         const sessions = await getHeartbeatSessions();
-        setHeartbeatSessions(sessions);
-        if (sessions.length > 0) {
-          lastSessionIdRef.current = sessions[0].id;
+        if (mounted) {
+          setHeartbeatSessions(sessions);
+          if (sessions.length > 0) {
+            lastSessionIdRef.current = sessions[0].id;
+          }
         }
       } catch (e) {
         console.error('Failed to refresh sessions:', e);
       }
     };
 
-    // Connect and subscribe to events
+    // Also listen for pulse_started as fallback (uses first node if no specific node)
+    const handlePulseStarted = (data: unknown) => {
+      console.log('[MindMap] Heartbeat pulse started:', data);
+      // Try to trigger animation on trunk node (node id 1) as fallback
+      if (nodes.length > 0) {
+        const trunkNode = nodes.find(n => n.is_trunk) || nodes[0];
+        console.log('[MindMap] Triggering animation on trunk node:', trunkNode.id);
+        triggerHeartbeatAnimation(trunkNode.id);
+      }
+    };
+
+    // Register listeners immediately (gateway will queue if not connected)
+    gateway.on('heartbeat_started', handleHeartbeatStarted);
+    gateway.on('heartbeat_completed', handleHeartbeatCompleted);
+    gateway.on('heartbeat_pulse_started', handlePulseStarted);
+    console.log('[MindMap] Registered heartbeat event listeners');
+
+    // Ensure connection
     gateway.connect().then(() => {
-      gateway.on('heartbeat_started', handleHeartbeatStarted);
-      gateway.on('heartbeat_completed', handleHeartbeatCompleted);
+      console.log('[MindMap] Gateway connected, listeners active');
     }).catch(e => {
-      console.error('Failed to connect to gateway:', e);
+      console.error('[MindMap] Failed to connect to gateway:', e);
     });
 
     return () => {
+      mounted = false;
       gateway.off('heartbeat_started', handleHeartbeatStarted);
       gateway.off('heartbeat_completed', handleHeartbeatCompleted);
+      gateway.off('heartbeat_pulse_started', handlePulseStarted);
+      console.log('[MindMap] Unregistered heartbeat event listeners');
     };
-  }, [triggerHeartbeatAnimation]);
+  }, [triggerHeartbeatAnimation, nodes]);
 
   useEffect(() => {
     loadGraph();

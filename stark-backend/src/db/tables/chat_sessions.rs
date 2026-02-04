@@ -63,7 +63,7 @@ impl Database {
                 session = self.get_chat_session(session.id)?.unwrap();
             } else {
                 // Update last activity
-                let conn = self.conn.lock().unwrap();
+                let conn = self.conn();
                 conn.execute(
                     "UPDATE chat_sessions SET last_activity_at = ?1, updated_at = ?1 WHERE id = ?2",
                     rusqlite::params![&now_str, session.id],
@@ -76,7 +76,7 @@ impl Database {
         }
 
         // No active session found - check if there's an inactive one we can reactivate
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let inactive_session_id: Option<i64> = conn.query_row(
             "SELECT id FROM chat_sessions WHERE session_key = ?1 AND is_active = 0 ORDER BY updated_at DESC LIMIT 1",
             [&session_key],
@@ -120,7 +120,7 @@ impl Database {
 
     /// Get a chat session by ID
     pub fn get_chat_session(&self, id: i64) -> SqliteResult<Option<ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_key, agent_id, scope, channel_type, channel_id, platform_chat_id,
@@ -138,7 +138,7 @@ impl Database {
 
     /// List all chat sessions
     pub fn list_chat_sessions(&self) -> SqliteResult<Vec<ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_key, agent_id, scope, channel_type, channel_id, platform_chat_id,
@@ -157,7 +157,7 @@ impl Database {
 
     /// Get a chat session by session key
     pub fn get_chat_session_by_key(&self, session_key: &str) -> SqliteResult<Option<ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_key, agent_id, scope, channel_type, channel_id, platform_chat_id,
@@ -180,7 +180,7 @@ impl Database {
         channel_type: &str,
         channel_id: i64,
     ) -> SqliteResult<Option<ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_key, agent_id, scope, channel_type, channel_id, platform_chat_id,
@@ -207,7 +207,7 @@ impl Database {
         scope: SessionScope,
         agent_id: Option<&str>,
     ) -> SqliteResult<ChatSession> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -243,7 +243,7 @@ impl Database {
 
     /// Mark a session as inactive (used when creating a new gateway session)
     pub fn deactivate_session(&self, session_id: i64) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET is_active = 0, updated_at = ?1 WHERE id = ?2",
@@ -254,7 +254,7 @@ impl Database {
 
     /// Reset a chat session (mark old as inactive, create new)
     pub fn reset_chat_session(&self, id: i64) -> SqliteResult<ChatSession> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -316,7 +316,7 @@ impl Database {
 
     /// Delete a chat session and all its messages
     pub fn delete_chat_session(&self, id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Delete agent context for the session
         conn.execute(
@@ -342,7 +342,7 @@ impl Database {
     /// Delete all chat sessions and their messages
     /// Returns (deleted_count, channel_ids) where channel_ids can be used to cancel agents
     pub fn delete_all_chat_sessions(&self) -> SqliteResult<(i64, Vec<i64>)> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get all unique channel_ids first (for cancelling agents)
         let mut stmt = conn.prepare("SELECT DISTINCT channel_id FROM chat_sessions")?;
@@ -375,7 +375,7 @@ impl Database {
         idle_timeout_minutes: Option<i32>,
         daily_reset_hour: Option<i32>,
     ) -> SqliteResult<Option<ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -446,7 +446,7 @@ impl Database {
         platform_message_id: Option<&str>,
         tokens_used: Option<i32>,
     ) -> SqliteResult<SessionMessage> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -482,7 +482,7 @@ impl Database {
 
     /// Get all messages for a session
     pub fn get_session_messages(&self, session_id: i64) -> SqliteResult<Vec<SessionMessage>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, user_id, user_name, platform_message_id, tokens_used, created_at
@@ -499,7 +499,7 @@ impl Database {
 
     /// Get recent messages for a session (limited)
     pub fn get_recent_session_messages(&self, session_id: i64, limit: i32) -> SqliteResult<Vec<SessionMessage>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, user_id, user_name, platform_message_id, tokens_used, created_at
@@ -518,7 +518,7 @@ impl Database {
 
     /// Count messages in a session
     pub fn count_session_messages(&self, session_id: i64) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.query_row(
             "SELECT COUNT(*) FROM session_messages WHERE session_id = ?1",
             [session_id],
@@ -528,7 +528,7 @@ impl Database {
 
     /// Get the first user message for a session (for showing initial query)
     pub fn get_first_user_message(&self, session_id: i64) -> SqliteResult<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.query_row(
             "SELECT content FROM session_messages
              WHERE session_id = ?1 AND role = 'user'
@@ -547,7 +547,7 @@ impl Database {
     /// List heartbeat sessions with their associated mind node IDs
     /// Parses the node ID from the heartbeat message content
     pub fn list_heartbeat_sessions(&self, limit: i32) -> SqliteResult<Vec<(ChatSession, Option<i64>)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get heartbeat sessions ordered by most recent first
         let mut stmt = conn.prepare(
@@ -579,7 +579,7 @@ impl Database {
 
     /// Extract the mind node ID from a heartbeat session's first message
     /// Looks for pattern "Current Position: Node #X" in the message
-    fn extract_heartbeat_node_id(&self, conn: &std::sync::MutexGuard<'_, rusqlite::Connection>, session_id: i64) -> Option<i64> {
+    fn extract_heartbeat_node_id(&self, conn: &super::super::DbConn, session_id: i64) -> Option<i64> {
         let content: Option<String> = conn.query_row(
             "SELECT content FROM session_messages
              WHERE session_id = ?1 AND role = 'user'
@@ -627,7 +627,7 @@ impl Database {
 
     /// Update the context token count for a session
     pub fn update_session_context_tokens(&self, session_id: i64, context_tokens: i32) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET context_tokens = ?1, updated_at = ?2 WHERE id = ?3",
@@ -638,7 +638,7 @@ impl Database {
 
     /// Update the max context tokens limit for a session (for dynamic compaction thresholds)
     pub fn update_session_max_context_tokens(&self, session_id: i64, max_context_tokens: i32) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET max_context_tokens = ?1, updated_at = ?2 WHERE id = ?3",
@@ -649,7 +649,7 @@ impl Database {
 
     /// Get oldest messages for compaction (excludes most recent messages)
     pub fn get_messages_for_compaction(&self, session_id: i64, keep_recent: i32) -> SqliteResult<Vec<SessionMessage>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get total count first
         let total: i64 = conn.query_row(
@@ -695,7 +695,7 @@ impl Database {
 
     /// Delete old messages after compaction (keeps the most recent messages)
     pub fn delete_compacted_messages(&self, session_id: i64, keep_recent: i32) -> SqliteResult<i32> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get IDs of messages to delete (all except the most recent)
         let deleted = conn.execute(
@@ -711,7 +711,7 @@ impl Database {
     /// Get the compaction summary for a session (if any)
     /// Now reads from the compaction_summary column directly instead of memories table.
     pub fn get_session_compaction_summary(&self, session_id: i64) -> SqliteResult<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let summary: Option<String> = conn.query_row(
             "SELECT compaction_summary FROM chat_sessions WHERE id = ?1",
@@ -724,7 +724,7 @@ impl Database {
 
     /// Set the compaction summary text for a session
     pub fn set_session_compaction_summary(&self, session_id: i64, summary: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET compaction_summary = ?1, updated_at = ?2 WHERE id = ?3",
@@ -735,7 +735,7 @@ impl Database {
 
     /// Update the last_flush_at timestamp for a session (Phase 1: pre-compaction flush)
     pub fn update_session_last_flush(&self, session_id: i64) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET last_flush_at = ?1, updated_at = ?1 WHERE id = ?2",
@@ -746,7 +746,7 @@ impl Database {
 
     /// Get the last flush timestamp for a session
     pub fn get_session_last_flush(&self, session_id: i64) -> SqliteResult<Option<chrono::DateTime<Utc>>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let flush_str: Option<String> = conn.query_row(
             "SELECT last_flush_at FROM chat_sessions WHERE id = ?1",
             [session_id],
@@ -764,7 +764,7 @@ impl Database {
 
     /// Get the oldest N messages for incremental compaction
     pub fn get_oldest_messages(&self, session_id: i64, limit: i32) -> SqliteResult<Vec<SessionMessage>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, user_id, user_name, platform_message_id, tokens_used, created_at
@@ -781,7 +781,7 @@ impl Database {
 
     /// Delete the oldest N messages from a session
     pub fn delete_oldest_messages(&self, session_id: i64, count: i32) -> SqliteResult<i32> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Delete oldest N messages by ID
         let deleted = conn.execute(
@@ -796,7 +796,7 @@ impl Database {
 
     /// Increment the compaction generation counter for a session
     pub fn increment_compaction_generation(&self, session_id: i64) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET compaction_generation = compaction_generation + 1, last_compaction_at = ?1, updated_at = ?1 WHERE id = ?2",
@@ -807,7 +807,7 @@ impl Database {
 
     /// Get the compaction generation for a session
     pub fn get_compaction_generation(&self, session_id: i64) -> SqliteResult<i32> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.query_row(
             "SELECT COALESCE(compaction_generation, 0) FROM chat_sessions WHERE id = ?1",
             [session_id],
@@ -821,7 +821,7 @@ impl Database {
 
     /// Update the completion status of a session
     pub fn update_session_completion_status(&self, session_id: i64, status: CompletionStatus) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute(
             "UPDATE chat_sessions SET completion_status = ?1, updated_at = ?2 WHERE id = ?3",
@@ -832,7 +832,7 @@ impl Database {
 
     /// Get the completion status of a session
     pub fn get_session_completion_status(&self, session_id: i64) -> SqliteResult<Option<CompletionStatus>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.query_row(
             "SELECT completion_status FROM chat_sessions WHERE id = ?1",
             [session_id],

@@ -9,7 +9,7 @@ use super::super::Database;
 impl Database {
     /// Get an API key by service name
     pub fn get_api_key(&self, service_name: &str) -> SqliteResult<Option<ApiKey>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, service_name, api_key, created_at, updated_at FROM external_api_keys WHERE service_name = ?1",
@@ -39,7 +39,7 @@ impl Database {
 
     /// List all API keys
     pub fn list_api_keys(&self) -> SqliteResult<Vec<ApiKey>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, service_name, api_key, created_at, updated_at FROM external_api_keys ORDER BY service_name",
@@ -70,7 +70,7 @@ impl Database {
 
     /// Insert or update an API key
     pub fn upsert_api_key(&self, service_name: &str, api_key: &str) -> SqliteResult<ApiKey> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Try to update first
@@ -95,7 +95,7 @@ impl Database {
 
     /// Delete an API key by service name
     pub fn delete_api_key(&self, service_name: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM external_api_keys WHERE service_name = ?1",
             [service_name],
@@ -105,7 +105,7 @@ impl Database {
 
     /// List all API keys with their full values (for export/backup)
     pub fn list_api_keys_with_values(&self) -> SqliteResult<Vec<(String, String)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT service_name, api_key FROM external_api_keys ORDER BY service_name",

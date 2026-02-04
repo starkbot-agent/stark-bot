@@ -8,7 +8,7 @@ use super::super::Database;
 impl Database {
     /// Get all settings for a channel
     pub fn get_channel_settings(&self, channel_id: i64) -> SqliteResult<Vec<ChannelSetting>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT channel_id, setting_key, setting_value
@@ -31,7 +31,7 @@ impl Database {
 
     /// Get a single setting value for a channel
     pub fn get_channel_setting(&self, channel_id: i64, key: &str) -> SqliteResult<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let value = conn
             .query_row(
@@ -51,7 +51,7 @@ impl Database {
         key: &str,
         value: &str,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         conn.execute(
             "INSERT INTO channel_settings (channel_id, setting_key, setting_value, created_at, updated_at)
@@ -67,7 +67,7 @@ impl Database {
 
     /// Delete a channel setting
     pub fn delete_channel_setting(&self, channel_id: i64, key: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM channel_settings WHERE channel_id = ?1 AND setting_key = ?2",
             rusqlite::params![channel_id, key],
@@ -77,7 +77,7 @@ impl Database {
 
     /// Delete all settings for a channel
     pub fn delete_all_channel_settings(&self, channel_id: i64) -> SqliteResult<usize> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM channel_settings WHERE channel_id = ?1",
             [channel_id],
@@ -91,7 +91,7 @@ impl Database {
         channel_id: i64,
         settings: &[(String, String)],
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         for (key, value) in settings {
             conn.execute(

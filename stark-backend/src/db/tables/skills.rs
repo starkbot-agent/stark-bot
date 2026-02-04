@@ -47,7 +47,7 @@ impl Database {
     }
 
     fn create_skill_internal(&self, skill: &DbSkill, force: bool) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Check if skill already exists and compare versions (unless force=true)
         if !force {
@@ -136,7 +136,7 @@ impl Database {
 
     /// Get a skill by name
     pub fn get_skill(&self, name: &str) -> SqliteResult<Option<DbSkill>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, description, body, version, author, homepage, metadata, enabled, requires_tools, requires_binaries, arguments, tags, subagent_type, created_at, updated_at
              FROM skills WHERE name = ?1"
@@ -151,7 +151,7 @@ impl Database {
 
     /// Get a skill by ID
     pub fn get_skill_by_id(&self, id: i64) -> SqliteResult<Option<DbSkill>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, description, body, version, author, homepage, metadata, enabled, requires_tools, requires_binaries, arguments, tags, subagent_type, created_at, updated_at
              FROM skills WHERE id = ?1"
@@ -166,7 +166,7 @@ impl Database {
 
     /// Get an enabled skill by name (more efficient than loading all skills)
     pub fn get_enabled_skill_by_name(&self, name: &str) -> SqliteResult<Option<DbSkill>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, description, body, version, author, homepage, metadata, enabled, requires_tools, requires_binaries, arguments, tags, subagent_type, created_at, updated_at
              FROM skills WHERE name = ?1 AND enabled = 1 LIMIT 1"
@@ -181,7 +181,7 @@ impl Database {
 
     /// List all skills
     pub fn list_skills(&self) -> SqliteResult<Vec<DbSkill>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, description, body, version, author, homepage, metadata, enabled, requires_tools, requires_binaries, arguments, tags, subagent_type, created_at, updated_at
              FROM skills ORDER BY name"
@@ -197,7 +197,7 @@ impl Database {
 
     /// List enabled skills
     pub fn list_enabled_skills(&self) -> SqliteResult<Vec<DbSkill>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, name, description, body, version, author, homepage, metadata, enabled, requires_tools, requires_binaries, arguments, tags, subagent_type, created_at, updated_at
              FROM skills WHERE enabled = 1 ORDER BY name"
@@ -213,7 +213,7 @@ impl Database {
 
     /// Update skill enabled status
     pub fn set_skill_enabled(&self, name: &str, enabled: bool) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         let rows_affected = conn.execute(
             "UPDATE skills SET enabled = ?1, updated_at = ?2 WHERE name = ?3",
@@ -224,7 +224,7 @@ impl Database {
 
     /// Delete a skill (cascade deletes scripts)
     pub fn delete_skill(&self, name: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM skills WHERE name = ?1",
             [name],
@@ -265,7 +265,7 @@ impl Database {
 
     /// Create a skill script
     pub fn create_skill_script(&self, script: &DbSkillScript) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -288,7 +288,7 @@ impl Database {
 
     /// Get all scripts for a skill
     pub fn get_skill_scripts(&self, skill_id: i64) -> SqliteResult<Vec<DbSkillScript>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, skill_id, name, code, language, created_at
              FROM skill_scripts WHERE skill_id = ?1 ORDER BY name"
@@ -313,7 +313,7 @@ impl Database {
 
     /// Get scripts for a skill by skill name
     pub fn get_skill_scripts_by_name(&self, skill_name: &str) -> SqliteResult<Vec<DbSkillScript>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT ss.id, ss.skill_id, ss.name, ss.code, ss.language, ss.created_at
              FROM skill_scripts ss
@@ -340,7 +340,7 @@ impl Database {
 
     /// Delete all scripts for a skill
     pub fn delete_skill_scripts(&self, skill_id: i64) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM skill_scripts WHERE skill_id = ?1",
             [skill_id],

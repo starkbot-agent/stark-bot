@@ -110,7 +110,7 @@ pub struct RecordBroadcastRequest {
 impl Database {
     /// Record a new broadcast transaction
     pub fn record_broadcast(&self, req: RecordBroadcastRequest) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -142,7 +142,7 @@ impl Database {
         status: BroadcastedTxStatus,
         error: Option<&str>,
     ) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let confirmed_at = if status == BroadcastedTxStatus::Confirmed {
             Some(Utc::now().to_rfc3339())
@@ -168,7 +168,7 @@ impl Database {
         broadcast_mode: Option<&str>,
         limit: Option<usize>,
     ) -> SqliteResult<Vec<BroadcastedTransaction>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut sql = String::from(
             "SELECT id, uuid, network, from_address, to_address, value, value_formatted,
@@ -243,7 +243,7 @@ impl Database {
     /// Get a single broadcasted transaction by UUID
     pub fn get_broadcasted_transaction(&self, uuid: &str) -> SqliteResult<Option<BroadcastedTransaction>> {
         let txs = self.list_broadcasted_transactions(None, None, None, Some(1))?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, uuid, network, from_address, to_address, value, value_formatted,

@@ -9,7 +9,7 @@ use super::super::Database;
 impl Database {
     /// Get or create heartbeat config for a channel (or global if channel_id is None)
     pub fn get_or_create_heartbeat_config(&self, channel_id: Option<i64>) -> SqliteResult<HeartbeatConfig> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Try to get existing config
         let existing = if let Some(cid) = channel_id {
@@ -95,7 +95,7 @@ impl Database {
         active_days: Option<&str>,
         enabled: Option<bool>,
     ) -> SqliteResult<HeartbeatConfig> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         let mut updates = vec!["updated_at = ?1".to_string()];
@@ -138,7 +138,7 @@ impl Database {
 
     /// Update heartbeat next_beat_at BEFORE execution (prevents race conditions)
     pub fn update_heartbeat_next_beat(&self, id: i64, next_beat_at: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -151,7 +151,7 @@ impl Database {
 
     /// Update heartbeat last run time (called after execution completes)
     pub fn update_heartbeat_last_beat(&self, id: i64, last_beat_at: &str, next_beat_at: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -164,7 +164,7 @@ impl Database {
 
     /// List all heartbeat configs
     pub fn list_heartbeat_configs(&self) -> SqliteResult<Vec<HeartbeatConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, interval_minutes, target, active_hours_start, active_hours_end,
                     active_days, enabled, last_beat_at, next_beat_at, current_mind_node_id, last_session_id,
@@ -182,7 +182,7 @@ impl Database {
 
     /// Get heartbeat config by ID
     pub fn get_heartbeat_config_by_id(&self, id: i64) -> SqliteResult<Option<HeartbeatConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         conn.query_row(
             "SELECT id, channel_id, interval_minutes, target, active_hours_start, active_hours_end,
@@ -196,7 +196,7 @@ impl Database {
 
     /// Get enabled heartbeat configs that are due to run
     pub fn list_due_heartbeat_configs(&self) -> SqliteResult<Vec<HeartbeatConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         let mut stmt = conn.prepare(
@@ -223,7 +223,7 @@ impl Database {
         current_mind_node_id: Option<i64>,
         last_session_id: Option<i64>,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(

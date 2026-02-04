@@ -54,7 +54,7 @@ pub struct MindGraphResponse {
 impl Database {
     /// Get or create the trunk (root) node
     pub fn get_or_create_trunk_node(&self) -> SqliteResult<MindNode> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Check if trunk exists
         let existing: Option<MindNode> = conn
@@ -96,7 +96,7 @@ impl Database {
 
     /// Create a new mind node
     pub fn create_mind_node(&self, request: &CreateMindNodeRequest) -> SqliteResult<MindNode> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         let body = request.body.as_deref().unwrap_or("");
 
@@ -132,7 +132,7 @@ impl Database {
 
     /// Get a mind node by ID
     pub fn get_mind_node(&self, id: i64) -> SqliteResult<Option<MindNode>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let node = conn
             .query_row(
                 "SELECT id, body, position_x, position_y, is_trunk, created_at, updated_at
@@ -146,7 +146,7 @@ impl Database {
 
     /// List all mind nodes
     pub fn list_mind_nodes(&self) -> SqliteResult<Vec<MindNode>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, body, position_x, position_y, is_trunk, created_at, updated_at
              FROM mind_nodes ORDER BY created_at ASC",
@@ -162,7 +162,7 @@ impl Database {
 
     /// Update a mind node
     pub fn update_mind_node(&self, id: i64, request: &UpdateMindNodeRequest) -> SqliteResult<Option<MindNode>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Build dynamic update
@@ -209,7 +209,7 @@ impl Database {
 
     /// Delete a mind node (also deletes connections via CASCADE)
     pub fn delete_mind_node(&self, id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Don't allow deleting trunk
         let is_trunk: bool = conn
@@ -226,7 +226,7 @@ impl Database {
 
     /// List all connections
     pub fn list_mind_node_connections(&self) -> SqliteResult<Vec<MindNodeConnection>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, parent_id, child_id, created_at FROM mind_node_connections ORDER BY created_at ASC",
         )?;
@@ -241,7 +241,7 @@ impl Database {
 
     /// Create a connection between two nodes
     pub fn create_mind_node_connection(&self, parent_id: i64, child_id: i64) -> SqliteResult<MindNodeConnection> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -264,7 +264,7 @@ impl Database {
 
     /// Delete a connection
     pub fn delete_mind_node_connection(&self, parent_id: i64, child_id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM mind_node_connections WHERE parent_id = ?1 AND child_id = ?2",
             [parent_id, child_id],
@@ -285,7 +285,7 @@ impl Database {
 
     /// Get random mind nodes (for future heartbeat integration)
     pub fn get_random_mind_nodes(&self, count: i32) -> SqliteResult<Vec<MindNode>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, body, position_x, position_y, is_trunk, created_at, updated_at
              FROM mind_nodes WHERE body != '' ORDER BY RANDOM() LIMIT ?1",
@@ -301,7 +301,7 @@ impl Database {
 
     /// Get all neighbors of a node (both parent and child connections)
     pub fn get_mind_node_neighbors(&self, node_id: i64) -> SqliteResult<Vec<MindNode>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get all connected nodes (both as parent or child in connections)
         let mut stmt = conn.prepare(
@@ -374,7 +374,7 @@ impl Database {
     /// Calculate the depth (distance from trunk) of a node
     /// Used for context - nodes closer to trunk are more "central" thoughts
     pub fn get_mind_node_depth(&self, node_id: i64) -> SqliteResult<i32> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // BFS to find shortest path to trunk
         let trunk_id: Option<i64> = conn.query_row(

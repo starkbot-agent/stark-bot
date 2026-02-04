@@ -611,20 +611,20 @@ async fn pulse_heartbeat(
     };
 
     log::info!("[HEARTBEAT] Running heartbeat now for config {}", config.id);
-    match scheduler.run_heartbeat_now(config.id).await {
-        Ok(_) => {
-            log::info!("[HEARTBEAT] Pulse completed successfully");
-            // Re-fetch config to get updated timestamps
-            let updated_config = state.db.get_or_create_heartbeat_config(None).ok();
+
+    // Fire and forget - returns immediately, heartbeat runs in background
+    match scheduler.get_ref().run_heartbeat_now(config.id) {
+        Ok(msg) => {
+            log::info!("[HEARTBEAT] {}", msg);
             HttpResponse::Ok().json(HeartbeatConfigResponse {
                 success: true,
-                config: updated_config,
+                config: Some(config),
                 error: None,
             })
         }
         Err(e) => {
-            log::error!("[HEARTBEAT] Pulse failed: {}", e);
-            HttpResponse::InternalServerError().json(HeartbeatConfigResponse {
+            log::error!("[HEARTBEAT] Pulse failed to start: {}", e);
+            HttpResponse::BadRequest().json(HeartbeatConfigResponse {
                 success: false,
                 config: Some(config),
                 error: Some(e),

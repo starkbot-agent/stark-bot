@@ -9,7 +9,7 @@ use super::super::Database;
 impl Database {
     /// Get global tool config (channel_id = NULL)
     pub fn get_global_tool_config(&self) -> SqliteResult<Option<ToolConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, profile, allow_list, deny_list, allowed_groups, denied_groups
              FROM tool_configs WHERE channel_id IS NULL"
@@ -40,7 +40,7 @@ impl Database {
 
     /// Get tool config for a specific channel
     pub fn get_channel_tool_config(&self, channel_id: i64) -> SqliteResult<Option<ToolConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, profile, allow_list, deny_list, allowed_groups, denied_groups
              FROM tool_configs WHERE channel_id = ?1"
@@ -82,7 +82,7 @@ impl Database {
 
     /// Save tool config (upsert)
     pub fn save_tool_config(&self, config: &ToolConfig) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         let profile_str = match &config.profile {
@@ -148,7 +148,7 @@ impl Database {
 
     /// Log a tool execution
     pub fn log_tool_execution(&self, execution: &ToolExecution) -> SqliteResult<i64> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let params_json = serde_json::to_string(&execution.parameters).unwrap_or_default();
 
         conn.execute(
@@ -176,7 +176,7 @@ impl Database {
         limit: i32,
         offset: i32,
     ) -> SqliteResult<Vec<ToolExecution>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, tool_name, parameters, success, result, duration_ms, executed_at
              FROM tool_executions WHERE channel_id = ?1 ORDER BY executed_at DESC LIMIT ?2 OFFSET ?3"
@@ -208,7 +208,7 @@ impl Database {
         limit: i32,
         offset: i32,
     ) -> SqliteResult<Vec<ToolExecution>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, tool_name, parameters, success, result, duration_ms, executed_at
              FROM tool_executions ORDER BY executed_at DESC LIMIT ?1 OFFSET ?2"

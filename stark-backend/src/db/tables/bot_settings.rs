@@ -10,7 +10,7 @@ use super::super::Database;
 impl Database {
     /// Get bot settings (there's only one row)
     pub fn get_bot_settings(&self) -> SqliteResult<BotSettings> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let result = conn.query_row(
             "SELECT id, bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, created_at, updated_at FROM bot_settings LIMIT 1",
@@ -73,7 +73,7 @@ impl Database {
         max_tool_iterations: Option<i32>,
         rogue_mode_enabled: Option<bool>,
     ) -> SqliteResult<BotSettings> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Check if settings exist

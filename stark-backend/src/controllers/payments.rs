@@ -67,7 +67,7 @@ async fn list_payments(
         return resp;
     }
 
-    let conn = state.db.conn.lock().unwrap();
+    let conn = state.db.conn();
     let limit = query.limit.unwrap_or(50).min(100);
     let offset = query.offset.unwrap_or(0);
 
@@ -160,7 +160,7 @@ async fn get_summary(
         return resp;
     }
 
-    let conn = state.db.conn.lock().unwrap();
+    let conn = state.db.conn();
 
     let total_payments: i64 = conn
         .query_row("SELECT COUNT(*) FROM x402_payments", [], |row| row.get(0))
@@ -206,7 +206,7 @@ async fn get_payment(
     }
 
     let payment_id = path.into_inner();
-    let conn = state.db.conn.lock().unwrap();
+    let conn = state.db.conn();
 
     let payment = conn.query_row(
         "SELECT id, channel_id, tool_name, resource, amount, amount_formatted, asset, pay_to, tx_hash, status, feedback_submitted, created_at

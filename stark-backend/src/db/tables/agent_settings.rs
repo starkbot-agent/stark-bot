@@ -9,7 +9,7 @@ use super::super::Database;
 impl Database {
     /// Get the currently enabled agent settings (only one can be enabled)
     pub fn get_active_agent_settings(&self) -> SqliteResult<Option<AgentSettings>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, endpoint, model_archetype, max_response_tokens, max_context_tokens, enabled, secret_key, created_at, updated_at
@@ -25,7 +25,7 @@ impl Database {
 
     /// Get agent settings by endpoint
     pub fn get_agent_settings_by_endpoint(&self, endpoint: &str) -> SqliteResult<Option<AgentSettings>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, endpoint, model_archetype, max_response_tokens, max_context_tokens, enabled, secret_key, created_at, updated_at
@@ -41,7 +41,7 @@ impl Database {
 
     /// List all agent settings
     pub fn list_agent_settings(&self) -> SqliteResult<Vec<AgentSettings>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, endpoint, model_archetype, max_response_tokens, max_context_tokens, enabled, secret_key, created_at, updated_at
@@ -65,7 +65,7 @@ impl Database {
         max_context_tokens: i32,
         secret_key: Option<&str>,
     ) -> SqliteResult<AgentSettings> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Enforce minimum context tokens
@@ -107,7 +107,7 @@ impl Database {
 
     /// Disable all agent settings (no AI provider active)
     pub fn disable_agent_settings(&self) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute("UPDATE agent_settings SET enabled = 0, updated_at = ?1", [&now])?;
         Ok(())

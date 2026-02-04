@@ -50,7 +50,7 @@ pub fn get_or_create_profile(
     discord_user_id: &str,
     username: &str,
 ) -> Result<DiscordUserProfile, String> {
-    let conn = db.conn.lock().unwrap();
+    let conn = db.conn();
 
     // Try to insert (ignore if exists)
     conn.execute(
@@ -77,7 +77,7 @@ pub fn get_or_create_profile(
 
 /// Get a Discord user profile by user ID
 pub fn get_profile(db: &Database, discord_user_id: &str) -> Result<Option<DiscordUserProfile>, String> {
-    let conn = db.conn.lock().unwrap();
+    let conn = db.conn();
     match get_profile_impl(&conn, discord_user_id) {
         Ok(p) => Ok(Some(p)),
         Err(e) if e.contains("not found") => Ok(None),
@@ -118,7 +118,7 @@ pub fn get_profile_by_address(
     db: &Database,
     address: &str,
 ) -> Result<Option<DiscordUserProfile>, String> {
-    let conn = db.conn.lock().unwrap();
+    let conn = db.conn();
 
     let result = conn.query_row(
         "SELECT id, discord_user_id, discord_username, public_address,
@@ -155,7 +155,7 @@ pub fn register_address(
     discord_user_id: &str,
     address: &str,
 ) -> Result<(), String> {
-    let conn = db.conn.lock().unwrap();
+    let conn = db.conn();
 
     conn.execute(
         "UPDATE discord_user_profiles
@@ -179,7 +179,7 @@ pub fn register_address(
 
 /// Unregister a public address for a Discord user
 pub fn unregister_address(db: &Database, discord_user_id: &str) -> Result<(), String> {
-    let conn = db.conn.lock().unwrap();
+    let conn = db.conn();
 
     conn.execute(
         "UPDATE discord_user_profiles

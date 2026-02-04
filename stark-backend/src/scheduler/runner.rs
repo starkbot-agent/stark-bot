@@ -1,13 +1,16 @@
 use crate::channels::dispatcher::MessageDispatcher;
 use crate::channels::types::NormalizedMessage;
 use crate::db::Database;
+use crate::execution::ExecutionTracker;
 use crate::gateway::events::EventBroadcaster;
 use crate::gateway::protocol::GatewayEvent;
 use crate::models::{CronJob, HeartbeatConfig, JobStatus, ScheduleType};
+use crate::tools::ToolRegistry;
 use chrono::{DateTime, Duration, Local, NaiveTime, Utc, Weekday, Datelike};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use tokio::time::{interval, Duration as TokioDuration};
+use tokio::time::{interval, timeout, Duration as TokioDuration};
 
 /// Constants for heartbeat identity - ensures only ONE identity ever exists
 pub const HEARTBEAT_CHANNEL_TYPE: &str = "heartbeat";
@@ -40,12 +43,20 @@ impl Default for SchedulerConfig {
     }
 }
 
+/// Minimum seconds between manual heartbeat pulses (rate limiting)
+const MIN_PULSE_INTERVAL_SECS: i64 = 30;
+
+/// Maximum time for a heartbeat execution before timeout (5 minutes)
+const HEARTBEAT_TIMEOUT_SECS: u64 = 300;
+
 /// The scheduler service that runs cron jobs and heartbeats
 pub struct Scheduler {
     db: Arc<Database>,
     dispatcher: Arc<MessageDispatcher>,
     broadcaster: Arc<EventBroadcaster>,
     config: SchedulerConfig,
+    /// Guard to prevent concurrent manual heartbeat pulses
+    pulse_in_progress: AtomicBool,
 }
 
 impl Scheduler {
@@ -60,7 +71,20 @@ impl Scheduler {
             dispatcher,
             broadcaster,
             config,
+            pulse_in_progress: AtomicBool::new(false),
         }
+    }
+
+    /// Compatibility method - db_url is no longer needed with connection pool
+    #[deprecated(note = "Use new() instead - db_url is no longer needed with r2d2 connection pool")]
+    pub fn new_with_db_url(
+        db: Arc<Database>,
+        dispatcher: Arc<MessageDispatcher>,
+        broadcaster: Arc<EventBroadcaster>,
+        config: SchedulerConfig,
+        _db_url: String,
+    ) -> Self {
+        Self::new(db, dispatcher, broadcaster, config)
     }
 
     /// Start the scheduler background task
@@ -131,6 +155,7 @@ impl Scheduler {
             dispatcher: Arc::clone(&self.dispatcher),
             broadcaster: Arc::clone(&self.broadcaster),
             config: self.config.clone(),
+            pulse_in_progress: AtomicBool::new(false),
         }
     }
 
@@ -535,16 +560,229 @@ impl Scheduler {
         Ok(format!("Job '{}' executed successfully", job.name))
     }
 
-    /// Manually trigger a heartbeat (force pulse)
-    pub async fn run_heartbeat_now(&self, config_id: i64) -> Result<String, String> {
+    /// Trigger a heartbeat pulse (fire and forget, like a channel message)
+    ///
+    /// Returns immediately after spawning the background task.
+    /// Results are broadcast via WebSocket events.
+    pub fn run_heartbeat_now(self: &Arc<Self>, config_id: i64) -> Result<String, String> {
+        // Check if a pulse is already in progress
+        if self.pulse_in_progress.compare_exchange(
+            false,
+            true,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ).is_err() {
+            return Err("A heartbeat pulse is already in progress. Please wait for it to complete.".to_string());
+        }
+
+        // Check rate limiting before spawning
         let config = self
             .db
             .get_heartbeat_config_by_id(config_id)
-            .map_err(|e| format!("Database error: {}", e))?
-            .ok_or_else(|| format!("Heartbeat config not found: {}", config_id))?;
+            .map_err(|e| {
+                self.pulse_in_progress.store(false, Ordering::SeqCst);
+                format!("Database error: {}", e)
+            })?
+            .ok_or_else(|| {
+                self.pulse_in_progress.store(false, Ordering::SeqCst);
+                format!("Heartbeat config not found: {}", config_id)
+            })?;
 
-        self.execute_heartbeat(&config).await?;
+        if let Some(ref last_beat_str) = config.last_beat_at {
+            if let Ok(last_beat) = DateTime::parse_from_rfc3339(last_beat_str) {
+                let elapsed = Utc::now().signed_duration_since(last_beat.with_timezone(&Utc));
+                if elapsed.num_seconds() < MIN_PULSE_INTERVAL_SECS {
+                    self.pulse_in_progress.store(false, Ordering::SeqCst);
+                    let wait_secs = MIN_PULSE_INTERVAL_SECS - elapsed.num_seconds();
+                    return Err(format!(
+                        "Rate limited: please wait {} more seconds before the next pulse.",
+                        wait_secs
+                    ));
+                }
+            }
+        }
 
-        Ok("Heartbeat pulse executed successfully".to_string())
+        // Clone what we need for the background task
+        // With r2d2 connection pool, we can safely share the database across async tasks
+        let db = Arc::clone(&self.db);
+        let broadcaster = Arc::clone(&self.broadcaster);
+        let scheduler_ref = Arc::clone(self);
+
+        // Spawn the heartbeat in a background task
+        tokio::spawn(async move {
+            log::info!("[HEARTBEAT] Starting pulse for config_id={}", config_id);
+
+            // Broadcast start event
+            broadcaster.broadcast(GatewayEvent::custom(
+                "heartbeat_pulse_started",
+                serde_json::json!({ "config_id": config_id }),
+            ));
+
+            // Create dispatcher for this task (uses shared db pool)
+            let tracker = Arc::new(ExecutionTracker::new(broadcaster.clone()));
+            let tool_registry = Arc::new(ToolRegistry::new());
+            let dispatcher = Arc::new(MessageDispatcher::new(
+                db.clone(),
+                broadcaster.clone(),
+                tool_registry,
+                tracker,
+            ));
+
+            // Execute with timeout
+            let result = timeout(
+                TokioDuration::from_secs(HEARTBEAT_TIMEOUT_SECS),
+                execute_heartbeat_isolated(&db, &dispatcher, &broadcaster, &config)
+            ).await;
+
+            let (success, error) = match result {
+                Ok(Ok(())) => {
+                    log::info!("[HEARTBEAT] Pulse completed successfully");
+                    (true, None)
+                }
+                Ok(Err(e)) => {
+                    log::error!("[HEARTBEAT] Pulse failed: {}", e);
+                    (false, Some(e))
+                }
+                Err(_) => {
+                    let msg = format!("Heartbeat timed out after {} seconds", HEARTBEAT_TIMEOUT_SECS);
+                    log::error!("[HEARTBEAT] {}", msg);
+                    (false, Some(msg))
+                }
+            };
+
+            // Broadcast completion event (in case the isolated function didn't)
+            if !success {
+                broadcaster.broadcast(GatewayEvent::custom(
+                    "heartbeat_pulse_completed",
+                    serde_json::json!({
+                        "config_id": config_id,
+                        "success": success,
+                        "error": error,
+                    }),
+                ));
+            }
+
+            // Clear the in-progress flag
+            scheduler_ref.pulse_in_progress.store(false, Ordering::SeqCst);
+        });
+
+        Ok("Heartbeat pulse started (running in background)".to_string())
     }
+}
+
+/// Execute heartbeat with isolated DB and dispatcher (doesn't block main server)
+async fn execute_heartbeat_isolated(
+    db: &Arc<Database>,
+    dispatcher: &Arc<MessageDispatcher>,
+    broadcaster: &Arc<EventBroadcaster>,
+    config: &HeartbeatConfig,
+) -> Result<(), String> {
+    let now = Utc::now();
+    let now_str = now.to_rfc3339();
+
+    log::info!("[HEARTBEAT-ISOLATED] Executing heartbeat (config_id: {})", config.id);
+
+    // Calculate and set next_beat_at BEFORE execution
+    let next_beat = now + Duration::minutes(config.interval_minutes as i64);
+    let next_beat_str = next_beat.to_rfc3339();
+    if let Err(e) = db.update_heartbeat_next_beat(config.id, &next_beat_str) {
+        log::error!("[HEARTBEAT-ISOLATED] Failed to update next_beat_at: {}", e);
+    }
+
+    // Get the next node to visit
+    let next_node = db.get_next_heartbeat_node(config.current_mind_node_id)
+        .map_err(|e| format!("Failed to get next heartbeat node: {}", e))?;
+
+    let node_depth = db.get_mind_node_depth(next_node.id).unwrap_or(0);
+
+    log::info!(
+        "[HEARTBEAT-ISOLATED] Visiting mind node {} (depth: {}, is_trunk: {})",
+        next_node.id, node_depth, next_node.is_trunk
+    );
+
+    // Broadcast heartbeat start event
+    broadcaster.broadcast(GatewayEvent::custom(
+        "heartbeat_started",
+        serde_json::json!({
+            "config_id": config.id,
+            "channel_id": config.channel_id,
+            "mind_node_id": next_node.id,
+            "mind_node_depth": node_depth,
+            "is_trunk": next_node.is_trunk,
+        }),
+    ));
+
+    // Build heartbeat message
+    let node_content = if next_node.body.is_empty() {
+        if next_node.is_trunk {
+            "This is the trunk node (root of your mind map). It's currently empty.".to_string()
+        } else {
+            "This node is currently empty.".to_string()
+        }
+    } else {
+        next_node.body.clone()
+    };
+
+    let message_text = format!(
+        "[HEARTBEAT - Mind Map Reflection]\n\
+        Current Position: Node #{} (depth: {}{})\n\
+        Node Content: {}\n\n\
+        Instructions:\n\
+        - Reflect on this node's content in the context of your mind map\n\
+        - Consider connections to other thoughts and ideas\n\
+        - If the node is empty, consider what thoughts belong here\n\
+        - You may update this node's content or create new connected nodes\n\
+        - Review any pending tasks or items that relate to this area\n\
+        - Respond with HEARTBEAT_OK if no action needed",
+        next_node.id,
+        node_depth,
+        if next_node.is_trunk { ", trunk" } else { "" },
+        node_content
+    );
+
+    let normalized = NormalizedMessage {
+        channel_id: config.channel_id.unwrap_or(0),
+        channel_type: HEARTBEAT_CHANNEL_TYPE.to_string(),
+        chat_id: HEARTBEAT_CHAT_ID.to_string(),
+        user_id: HEARTBEAT_USER_ID.to_string(),
+        user_name: HEARTBEAT_USER_NAME.to_string(),
+        text: message_text,
+        message_id: Some(format!("heartbeat-{}", now.timestamp())),
+        session_mode: Some("isolated".to_string()),
+        selected_network: None,
+    };
+
+    // Execute the heartbeat via isolated dispatcher
+    let result = dispatcher.dispatch(normalized).await;
+
+    // Get session ID
+    let session_key = format!("{}:{}:{}", HEARTBEAT_CHANNEL_TYPE, config.channel_id.unwrap_or(0), HEARTBEAT_CHAT_ID);
+    let new_session_id = db.get_chat_session_by_key(&session_key)
+        .ok()
+        .flatten()
+        .map(|s| s.id);
+
+    // Update heartbeat config with new position
+    if let Err(e) = db.update_heartbeat_mind_position(config.id, Some(next_node.id), new_session_id) {
+        log::error!("[HEARTBEAT-ISOLATED] Failed to update mind position: {}", e);
+    }
+
+    // Update last_beat_at
+    db.update_heartbeat_last_beat(config.id, &now_str, &next_beat_str)
+        .map_err(|e| format!("Failed to update heartbeat status: {}", e))?;
+
+    // Broadcast completion
+    broadcaster.broadcast(GatewayEvent::custom(
+        "heartbeat_completed",
+        serde_json::json!({
+            "config_id": config.id,
+            "channel_id": config.channel_id,
+            "mind_node_id": next_node.id,
+            "success": result.error.is_none(),
+        }),
+    ));
+
+    log::info!("[HEARTBEAT-ISOLATED] Completed (config_id: {}, visited node: {})", config.id, next_node.id);
+
+    Ok(())
 }

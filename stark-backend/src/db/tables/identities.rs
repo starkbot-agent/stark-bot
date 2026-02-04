@@ -19,7 +19,7 @@ impl Database {
         if let Some(link) = self.get_identity_by_platform(channel_type, platform_user_id)? {
             // Update username if changed
             if platform_user_name.is_some() && link.platform_user_name.as_deref() != platform_user_name {
-                let conn = self.conn.lock().unwrap();
+                let conn = self.conn();
                 let now = Utc::now().to_rfc3339();
                 conn.execute(
                     "UPDATE identity_links SET platform_user_name = ?1, updated_at = ?2 WHERE id = ?3",
@@ -31,7 +31,7 @@ impl Database {
 
         // Create new identity
         let identity_id = Uuid::new_v4().to_string();
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -64,7 +64,7 @@ impl Database {
         platform_user_id: &str,
         platform_user_name: Option<&str>,
     ) -> SqliteResult<IdentityLink> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -98,7 +98,7 @@ impl Database {
 
     /// Get identity by platform credentials
     pub fn get_identity_by_platform(&self, channel_type: &str, platform_user_id: &str) -> SqliteResult<Option<IdentityLink>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, identity_id, channel_type, platform_user_id, platform_user_name, is_verified, verified_at, created_at, updated_at
@@ -114,7 +114,7 @@ impl Database {
 
     /// Get all linked identities for an identity_id
     pub fn get_linked_identities(&self, identity_id: &str) -> SqliteResult<Vec<IdentityLink>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, identity_id, channel_type, platform_user_id, platform_user_name, is_verified, verified_at, created_at, updated_at
@@ -131,7 +131,7 @@ impl Database {
 
     /// List all identity links (unique identities)
     pub fn list_identities(&self) -> SqliteResult<Vec<IdentityLink>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, identity_id, channel_type, platform_user_id, platform_user_name, is_verified, verified_at, created_at, updated_at
@@ -174,7 +174,7 @@ impl Database {
 
     /// Get sessions for an identity (by matching session_messages user_id to identity's platform_user_ids)
     pub fn get_sessions_for_identity(&self, identity_id: &str) -> SqliteResult<Vec<crate::models::ChatSession>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // First get all platform_user_ids for this identity
         let mut stmt = conn.prepare(
@@ -264,7 +264,7 @@ impl Database {
 
     /// Get tool execution stats for an identity
     pub fn get_tool_stats_for_identity(&self, identity_id: &str) -> SqliteResult<Vec<(String, i64, i64)>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get all platform_user_ids for this identity
         let mut stmt = conn.prepare(
@@ -334,7 +334,7 @@ impl Database {
         identity_id: &str,
         limit: i32,
     ) -> SqliteResult<Vec<crate::tools::ToolExecution>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Get all platform_user_ids for this identity
         let mut stmt = conn.prepare(

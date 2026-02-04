@@ -11,7 +11,7 @@ use rusqlite::{params, Result as SqliteResult};
 impl Database {
     /// Get agent context for a session (if exists)
     pub fn get_agent_context(&self, session_id: i64) -> SqliteResult<Option<AgentContext>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT original_request, mode, mode_iterations, total_iterations,
@@ -77,7 +77,7 @@ impl Database {
         session_id: i64,
         context: &AgentContext,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Serialize JSON fields
@@ -119,7 +119,7 @@ impl Database {
 
     /// Delete agent context for a session (e.g., on session reset)
     pub fn delete_agent_context(&self, session_id: i64) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.execute(
             "DELETE FROM agent_contexts WHERE session_id = ?",
             params![session_id],
@@ -129,7 +129,7 @@ impl Database {
 
     /// Check if a session has an agent context
     pub fn has_agent_context(&self, session_id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM agent_contexts WHERE session_id = ?",
             params![session_id],

@@ -27,7 +27,7 @@ impl Database {
         timeout_seconds: Option<i32>,
         delete_after_run: bool,
     ) -> SqliteResult<CronJob> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let job_id = Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
 
@@ -95,7 +95,7 @@ impl Database {
 
     /// Get a cron job by ID
     pub fn get_cron_job(&self, id: i64) -> SqliteResult<Option<CronJob>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         match self.get_cron_job_by_id_internal(&conn, id) {
             Ok(job) => Ok(Some(job)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -105,7 +105,7 @@ impl Database {
 
     /// Get a cron job by job_id (UUID string)
     pub fn get_cron_job_by_job_id(&self, job_id: &str) -> SqliteResult<Option<CronJob>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         match conn.query_row(
             "SELECT id, job_id, name, description, schedule_type, schedule_value, timezone,
                     session_mode, message, system_event, channel_id, deliver_to, deliver,
@@ -124,7 +124,7 @@ impl Database {
 
     /// List all cron jobs
     pub fn list_cron_jobs(&self) -> SqliteResult<Vec<CronJob>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, job_id, name, description, schedule_type, schedule_value, timezone,
                     session_mode, message, system_event, channel_id, deliver_to, deliver,
@@ -144,7 +144,7 @@ impl Database {
 
     /// List active cron jobs that are due to run
     pub fn list_due_cron_jobs(&self) -> SqliteResult<Vec<CronJob>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         let mut stmt = conn.prepare(
@@ -188,7 +188,7 @@ impl Database {
         delete_after_run: Option<bool>,
         status: Option<&str>,
     ) -> SqliteResult<CronJob> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Build dynamic update query
@@ -253,7 +253,7 @@ impl Database {
         success: bool,
         error: Option<&str>,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         if success {
@@ -280,7 +280,7 @@ impl Database {
     /// Mark a cron job as started by setting next_run_at to prevent duplicate execution
     /// This should be called BEFORE the job executes to prevent race conditions
     pub fn mark_cron_job_started(&self, id: i64, next_run_at: Option<&str>) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -293,7 +293,7 @@ impl Database {
 
     /// Delete a cron job
     pub fn delete_cron_job(&self, id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute("DELETE FROM cron_jobs WHERE id = ?1", [id])?;
         Ok(rows_affected > 0)
     }
@@ -309,7 +309,7 @@ impl Database {
         error: Option<&str>,
         duration_ms: Option<i64>,
     ) -> SqliteResult<CronJobRun> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         conn.execute(
             "INSERT INTO cron_job_runs (job_id, started_at, completed_at, success, result, error, duration_ms)
@@ -333,7 +333,7 @@ impl Database {
 
     /// Get recent runs for a cron job
     pub fn get_cron_job_runs(&self, job_id: i64, limit: i32) -> SqliteResult<Vec<CronJobRun>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, job_id, started_at, completed_at, success, result, error, duration_ms
              FROM cron_job_runs WHERE job_id = ?1 ORDER BY started_at DESC LIMIT ?2"

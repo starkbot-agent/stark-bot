@@ -15,7 +15,7 @@ impl Database {
         bot_token: &str,
         app_token: Option<&str>,
     ) -> SqliteResult<Channel> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -40,7 +40,7 @@ impl Database {
 
     /// Get a channel by ID
     pub fn get_channel(&self, id: i64) -> SqliteResult<Option<Channel>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, channel_type, name, enabled, bot_token, app_token, created_at, updated_at
@@ -56,7 +56,7 @@ impl Database {
 
     /// List all channels
     pub fn list_channels(&self) -> SqliteResult<Vec<Channel>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, channel_type, name, enabled, bot_token, app_token, created_at, updated_at
@@ -73,7 +73,7 @@ impl Database {
 
     /// List only enabled channels
     pub fn list_enabled_channels(&self) -> SqliteResult<Vec<Channel>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT id, channel_type, name, enabled, bot_token, app_token, created_at, updated_at
@@ -97,7 +97,7 @@ impl Database {
         bot_token: Option<&str>,
         app_token: Option<Option<&str>>,
     ) -> SqliteResult<Option<Channel>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Build dynamic update query
@@ -153,7 +153,7 @@ impl Database {
 
     /// Enable or disable a channel
     pub fn set_channel_enabled(&self, id: i64, enabled: bool) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         let rows_affected = conn.execute(
@@ -166,7 +166,7 @@ impl Database {
 
     /// Delete a channel
     pub fn delete_channel(&self, id: i64) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM external_channels WHERE id = ?1",
             [id],

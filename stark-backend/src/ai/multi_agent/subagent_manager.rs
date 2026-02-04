@@ -468,7 +468,7 @@ impl SubAgentManager {
 
     /// Save sub-agent state to database (static version)
     fn save_subagent_direct(db: &Database, context: &SubAgentContext) -> Result<(), String> {
-        let conn = db.conn.lock().unwrap();
+        let conn = db.conn();
 
         // Check if record exists
         let exists: bool = conn
@@ -533,7 +533,7 @@ impl SubAgentManager {
 
     /// Get the status of a sub-agent by ID
     pub fn get_status(&self, subagent_id: &str) -> Result<Option<SubAgentContext>, String> {
-        let conn = self.db.conn.lock().unwrap();
+        let conn = self.db.conn();
 
         let result = conn.query_row(
             "SELECT
@@ -577,7 +577,7 @@ impl SubAgentManager {
 
     /// List all sub-agents for a channel
     pub fn list_by_channel(&self, channel_id: i64) -> Result<Vec<SubAgentContext>, String> {
-        let conn = self.db.conn.lock().unwrap();
+        let conn = self.db.conn();
 
         let mut stmt = conn
             .prepare(

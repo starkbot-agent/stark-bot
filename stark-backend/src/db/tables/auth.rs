@@ -16,7 +16,7 @@ impl Database {
     }
 
     pub fn create_session_for_address(&self, public_address: Option<&str>) -> SqliteResult<Session> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let token = Self::generate_session_token();
         let created_at = Utc::now();
         let expires_at = created_at + Duration::hours(24);
@@ -50,7 +50,7 @@ impl Database {
     }
 
     pub fn validate_session(&self, token: &str) -> SqliteResult<Option<Session>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now();
         let now_str = now.to_rfc3339();
 
@@ -89,7 +89,7 @@ impl Database {
     }
 
     pub fn delete_session(&self, token: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute("DELETE FROM auth_sessions WHERE token = ?1", [token])?;
         Ok(rows_affected > 0)
     }
@@ -99,7 +99,7 @@ impl Database {
     // ============================================
 
     pub fn create_or_update_challenge(&self, public_address: &str, challenge: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Upsert: insert or replace existing challenge for this address
@@ -114,7 +114,7 @@ impl Database {
     }
 
     pub fn get_challenge(&self, public_address: &str) -> SqliteResult<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let mut stmt = conn.prepare(
             "SELECT challenge FROM auth_challenges WHERE public_address = ?1",
@@ -128,7 +128,7 @@ impl Database {
     }
 
     pub fn validate_challenge(&self, public_address: &str, challenge: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM auth_challenges WHERE public_address = ?1 AND challenge = ?2",
@@ -140,7 +140,7 @@ impl Database {
     }
 
     pub fn delete_challenge(&self, public_address: &str) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let rows_affected = conn.execute(
             "DELETE FROM auth_challenges WHERE public_address = ?1",
             [public_address],

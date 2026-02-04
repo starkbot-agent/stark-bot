@@ -136,7 +136,7 @@ async fn get_our_identity(
         return resp;
     }
 
-    let conn = state.db.conn.lock().unwrap();
+    let conn = state.db.conn();
 
     // Check if we have a stored identity
     let identity = conn.query_row(

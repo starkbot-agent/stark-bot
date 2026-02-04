@@ -2,23 +2,34 @@
 //!
 //! This file contains:
 //! - Database struct definition
-//! - Connection management (new, init)
+//! - Connection pool management (r2d2)
 //! - Schema creation and migrations
 //!
 //! All database operations are in the models/ subdirectory.
 
-use rusqlite::{Connection, Result as SqliteResult};
+use r2d2::{Pool, PooledConnection};
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::Result as SqliteResult;
 use std::path::Path;
-use std::sync::Mutex;
 
-/// Main database wrapper with connection pooling via Mutex
+/// Pooled connection type alias for convenience
+pub type DbConn = PooledConnection<SqliteConnectionManager>;
+
+/// Main database wrapper with r2d2 connection pool
 pub struct Database {
-    pub(crate) conn: Mutex<Connection>,
+    pool: Pool<SqliteConnectionManager>,
 }
 
 impl Database {
-    /// Create a new database connection and initialize schema
+    /// Create a new database connection pool and initialize schema
     pub fn new(database_url: &str) -> SqliteResult<Self> {
+        Self::new_with_options(database_url, true)
+    }
+
+    /// Create a new database connection pool with optional initialization
+    /// Note: The `init` parameter is kept for API compatibility but the pool
+    /// is always created. Set init=false to skip schema initialization.
+    pub fn new_with_options(database_url: &str, init: bool) -> SqliteResult<Self> {
         // Create parent directory if it doesn't exist
         if let Some(parent) = Path::new(database_url).parent() {
             if !parent.as_os_str().is_empty() {
@@ -26,17 +37,37 @@ impl Database {
             }
         }
 
-        let conn = Connection::open(database_url)?;
-        let db = Self {
-            conn: Mutex::new(conn),
-        };
-        db.init()?;
+        // Create connection manager with SQLite pragmas
+        let manager = SqliteConnectionManager::file(database_url)
+            .with_init(|conn| {
+                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+            });
+
+        // Build pool with reasonable defaults for SQLite
+        // SQLite handles concurrency via WAL, so we don't need many connections
+        let pool = Pool::builder()
+            .max_size(8)  // SQLite works best with limited connections
+            .build(manager)
+            .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
+
+        let db = Self { pool };
+
+        if init {
+            db.init()?;
+        }
+
         Ok(db)
+    }
+
+    /// Get a connection from the pool
+    #[inline]
+    pub fn conn(&self) -> DbConn {
+        self.pool.get().expect("Failed to get database connection from pool")
     }
 
     /// Initialize all database tables and run migrations
     fn init(&self) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
 
         // Migrate: rename sessions -> auth_sessions if the old table exists
         let old_table_exists: bool = conn
@@ -1027,7 +1058,7 @@ impl Database {
         tx_hash: Option<&str>,
         status: &str,
     ) -> Result<i64, rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.execute(
             "INSERT INTO x402_payments (channel_id, tool_name, resource, amount, amount_formatted, asset, pay_to, tx_hash, status)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
@@ -1043,7 +1074,7 @@ impl Database {
         status: &str,
         tx_hash: Option<&str>,
     ) -> Result<(), rusqlite::Error> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         conn.execute(
             "UPDATE x402_payments SET status = ?1, tx_hash = COALESCE(?2, tx_hash) WHERE id = ?3",
             rusqlite::params![status, tx_hash, payment_id],

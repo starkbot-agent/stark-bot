@@ -9,7 +9,7 @@ use super::super::Database;
 impl Database {
     /// Get Gmail configuration (only one config supported currently)
     pub fn get_gmail_config(&self) -> SqliteResult<Option<GmailConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, email, access_token, refresh_token, token_expires_at,
                     watch_labels, project_id, topic_name, watch_expires_at, history_id,
@@ -26,7 +26,7 @@ impl Database {
 
     /// Get Gmail configuration by email
     pub fn get_gmail_config_by_email(&self, email: &str) -> SqliteResult<Option<GmailConfig>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, email, access_token, refresh_token, token_expires_at,
                     watch_labels, project_id, topic_name, watch_expires_at, history_id,
@@ -53,7 +53,7 @@ impl Database {
         response_channel_id: Option<i64>,
         auto_reply: bool,
     ) -> SqliteResult<GmailConfig> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -78,7 +78,7 @@ impl Database {
         auto_reply: Option<bool>,
         enabled: Option<bool>,
     ) -> SqliteResult<GmailConfig> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         // Build dynamic update
@@ -112,7 +112,7 @@ impl Database {
         watch_expires_at: Option<DateTime<Utc>>,
         history_id: Option<&str>,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         let expires_str = watch_expires_at.map(|dt| dt.to_rfc3339());
 
@@ -126,7 +126,7 @@ impl Database {
 
     /// Update Gmail history ID
     pub fn update_gmail_history_id(&self, id: i64, history_id: &str) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
@@ -144,7 +144,7 @@ impl Database {
         access_token: &str,
         token_expires_at: Option<DateTime<Utc>>,
     ) -> SqliteResult<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         let expires_str = token_expires_at.map(|dt| dt.to_rfc3339());
 
@@ -158,7 +158,7 @@ impl Database {
 
     /// Delete Gmail configuration
     pub fn delete_gmail_config(&self) -> SqliteResult<bool> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn();
         let deleted = conn.execute("DELETE FROM gmail_configs", [])?;
         Ok(deleted > 0)
     }
