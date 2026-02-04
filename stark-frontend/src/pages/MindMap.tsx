@@ -79,22 +79,6 @@ export default function MindMap() {
     }
     console.log('[Animation] Found node group, proceeding with animation');
 
-    // Debug: show a visible marker at the animation location
-    const debugMarker = document.createElement('div');
-    debugMarker.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: lime;
-      color: black;
-      padding: 10px;
-      z-index: 9999;
-      font-weight: bold;
-    `;
-    debugMarker.textContent = 'ANIMATION TRIGGERED!';
-    document.body.appendChild(debugMarker);
-    setTimeout(() => debugMarker.remove(), 2000);
-
     // Get node position and apply current zoom transform
     const transform = nodeGroup.attr('transform');
     const match = transform?.match(/translate\(([^,]+),([^)]+)\)/);
@@ -294,8 +278,8 @@ export default function MindMap() {
       })
       .catch(e => console.error('[MindMap] Failed to pulse heartbeat:', e));
 
-    // Show loading for 2 seconds then stop
-    setTimeout(() => setIsPulsing(false), 2000);
+    // Disable button for 5 seconds to prevent spam
+    setTimeout(() => setIsPulsing(false), 5000);
   };
 
   // Listen for heartbeat events via WebSocket
@@ -341,10 +325,21 @@ export default function MindMap() {
       }
     };
 
+    // Listen for pulse completion (especially errors)
+    const handlePulseCompleted = (data: unknown) => {
+      const event = data as { success?: boolean; error?: string };
+      if (event.success) {
+        console.log('[MindMap] Heartbeat pulse completed successfully');
+      } else {
+        console.error('[MindMap] Heartbeat pulse FAILED:', event.error);
+      }
+    };
+
     // Register listeners immediately (gateway will queue if not connected)
     gateway.on('heartbeat_started', handleHeartbeatStarted);
     gateway.on('heartbeat_completed', handleHeartbeatCompleted);
     gateway.on('heartbeat_pulse_started', handlePulseStarted);
+    gateway.on('heartbeat_pulse_completed', handlePulseCompleted);
     console.log('[MindMap] Registered heartbeat event listeners');
 
     // Ensure connection
@@ -359,6 +354,7 @@ export default function MindMap() {
       gateway.off('heartbeat_started', handleHeartbeatStarted);
       gateway.off('heartbeat_completed', handleHeartbeatCompleted);
       gateway.off('heartbeat_pulse_started', handlePulseStarted);
+      gateway.off('heartbeat_pulse_completed', handlePulseCompleted);
       console.log('[MindMap] Unregistered heartbeat event listeners');
     };
   }, [triggerHeartbeatAnimation, nodes]);

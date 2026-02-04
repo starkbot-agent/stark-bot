@@ -356,12 +356,12 @@ impl Database {
             return Ok(current_node);
         }
 
-        // Random decision: 40% stay, 60% hop (biases toward exploration)
+        // Random decision: 10% stay, 90% hop (biases toward exploration)
         let mut rng = rand::thread_rng();
 
         // gen_bool(p) returns true with probability p
-        // We want 40% chance to stay, so gen_bool(0.4) = true means stay
-        if rng.gen_bool(0.4) {
+        // We want 10% chance to stay, so gen_bool(0.1) = true means stay
+        if rng.gen_bool(0.1) {
             // Stay at current node
             Ok(current_node)
         } else {
