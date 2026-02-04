@@ -483,8 +483,12 @@ impl MessageDispatcher {
         // Debug: Log full system prompt
         log::debug!("[DISPATCH] System prompt:\n{}", system_prompt);
 
-        // Get recent session messages for conversation context
-        let history = self.db.get_recent_session_messages(session.id, 20).unwrap_or_default();
+        // Build context with cross-session memory integration
+        let (history, context_summary) = self.context_manager.build_context_with_memories(
+            session.id,
+            Some(&identity.identity_id),
+            20,
+        );
 
         // Build messages for the AI
         let mut messages = vec![Message {
@@ -492,11 +496,11 @@ impl MessageDispatcher {
             content: system_prompt.clone(),
         }];
 
-        // Add compaction summary if available (provides context from earlier in conversation)
-        if let Some(compaction_summary) = self.context_manager.get_compaction_summary(session.id) {
+        // Add combined context (compaction summary + cross-session memories) if available
+        if let Some(context) = context_summary {
             messages.push(Message {
                 role: MessageRole::System,
-                content: format!("## Previous Conversation Summary\n{}", compaction_summary),
+                content: context,
             });
         }
 
@@ -765,9 +769,30 @@ impl MessageDispatcher {
                     // Update context tokens
                     self.context_manager.update_context_tokens(session.id, response_tokens);
 
-                    // Check if compaction is needed
-                    if self.context_manager.needs_compaction(session.id) {
-                        log::info!("[COMPACTION] Context limit reached for session {}, triggering compaction", session.id);
+                    // Check if incremental compaction is needed (earlier trigger, smaller batches)
+                    if self.context_manager.needs_incremental_compaction(session.id) {
+                        log::info!("[COMPACTION] Context threshold reached for session {}, triggering incremental compaction", session.id);
+                        if let Err(e) = self.context_manager.compact_incremental(
+                            session.id,
+                            &client,
+                            Some(&identity.identity_id),
+                        ).await {
+                            log::error!("[COMPACTION] Incremental compaction failed: {}", e);
+                            // Fall back to full compaction if incremental fails
+                            if self.context_manager.needs_compaction(session.id) {
+                                log::info!("[COMPACTION] Falling back to full compaction");
+                                if let Err(e) = self.context_manager.compact_session(
+                                    session.id,
+                                    &client,
+                                    Some(&identity.identity_id),
+                                ).await {
+                                    log::error!("[COMPACTION] Full compaction also failed: {}", e);
+                                }
+                            }
+                        }
+                    } else if self.context_manager.needs_compaction(session.id) {
+                        // Hard limit reached - do full compaction
+                        log::info!("[COMPACTION] Hard context limit reached for session {}, triggering full compaction", session.id);
                         if let Err(e) = self.context_manager.compact_session(
                             session.id,
                             &client,

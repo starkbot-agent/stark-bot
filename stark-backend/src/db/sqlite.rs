@@ -279,6 +279,9 @@ impl Database {
         let _ = conn.execute("ALTER TABLE chat_sessions ADD COLUMN completion_status TEXT NOT NULL DEFAULT 'active'", []);
         // QMD Memory: Add compaction_summary to store summary text directly
         let _ = conn.execute("ALTER TABLE chat_sessions ADD COLUMN compaction_summary TEXT", []);
+        // Sliding window compaction: Add generation counter and timestamp
+        let _ = conn.execute("ALTER TABLE chat_sessions ADD COLUMN compaction_generation INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE chat_sessions ADD COLUMN last_compaction_at TEXT", []);
 
         // Session messages table - conversation transcripts
         conn.execute(

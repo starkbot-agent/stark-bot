@@ -153,7 +153,8 @@ pub struct ChatSession {
     pub context_tokens: i32,
     /// Maximum context window size (default: 100000 for Claude)
     pub max_context_tokens: i32,
-    /// ID of the compaction memory entry if context has been compacted
+    /// DEPRECATED: Legacy compaction memory ID. No longer used - compaction summaries
+    /// are now stored directly in `compaction_summary` column. Kept for migration compatibility.
     pub compaction_id: Option<i64>,
     /// Completion status of the session
     #[serde(default)]
