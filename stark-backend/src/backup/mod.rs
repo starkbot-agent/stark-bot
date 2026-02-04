@@ -42,6 +42,9 @@ pub struct BackupData {
     /// Channel settings (key-value configs per channel)
     #[serde(default)]
     pub channel_settings: Vec<ChannelSettingEntry>,
+    /// Channels (with bot tokens)
+    #[serde(default)]
+    pub channels: Vec<ChannelEntry>,
 }
 
 impl BackupData {
@@ -59,6 +62,7 @@ impl BackupData {
             memories: None,
             bot_settings: None,
             channel_settings: Vec::new(),
+            channels: Vec::new(),
         }
     }
 
@@ -72,6 +76,7 @@ impl BackupData {
             + if self.bot_settings.is_some() { 1 } else { 0 }
             + if self.heartbeat_config.is_some() { 1 } else { 0 }
             + self.channel_settings.len()
+            + self.channels.len()
     }
 }
 
@@ -165,6 +170,17 @@ pub struct ChannelSettingEntry {
     pub channel_id: i64,
     pub setting_key: String,
     pub setting_value: String,
+}
+
+/// Channel entry in backup (the actual channel with tokens)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelEntry {
+    pub id: i64,
+    pub channel_type: String,
+    pub name: String,
+    pub enabled: bool,
+    pub bot_token: String,
+    pub app_token: Option<String>,
 }
 
 /// Options for what to include in a backup

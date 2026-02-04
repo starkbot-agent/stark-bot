@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, EnumIter, EnumString, IntoEnumIterator};
 
 use crate::backup::{
-    ApiKeyEntry, BackupData, BotSettingsEntry, ChannelSettingEntry, CronJobEntry,
+    ApiKeyEntry, BackupData, BotSettingsEntry, ChannelEntry, ChannelSettingEntry, CronJobEntry,
     HeartbeatConfigEntry, MindConnectionEntry, MindNodeEntry,
 };
 use crate::db::tables::mind_nodes::{CreateMindNodeRequest, UpdateMindNodeRequest};
@@ -338,6 +338,8 @@ pub struct BackupResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cron_job_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_setting_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub has_settings: Option<bool>,
@@ -368,6 +370,8 @@ pub struct PreviewKeysResponse {
     pub connection_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cron_job_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_setting_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -607,6 +611,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -626,6 +631,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -649,6 +655,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -797,14 +804,35 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
         }
     }
 
+    // Get channels (non-safe-mode only)
+    match state.db.list_channels_for_backup() {
+        Ok(channels) => {
+            backup.channels = channels
+                .iter()
+                .map(|c| ChannelEntry {
+                    id: c.id,
+                    channel_type: c.channel_type.clone(),
+                    name: c.name.clone(),
+                    enabled: c.enabled,
+                    bot_token: c.bot_token.clone(),
+                    app_token: c.app_token.clone(),
+                })
+                .collect();
+        }
+        Err(e) => {
+            log::warn!("Failed to get channels for backup: {}", e);
+        }
+    }
+
     // Check if there's anything to backup
-    if backup.api_keys.is_empty() && backup.mind_map_nodes.is_empty() && backup.cron_jobs.is_empty() && backup.bot_settings.is_none() && backup.heartbeat_config.is_none() && backup.channel_settings.is_empty() {
+    if backup.api_keys.is_empty() && backup.mind_map_nodes.is_empty() && backup.cron_jobs.is_empty() && backup.bot_settings.is_none() && backup.heartbeat_config.is_none() && backup.channel_settings.is_empty() && backup.channels.is_empty() {
         return HttpResponse::BadRequest().json(BackupResponse {
             success: false,
             key_count: None,
             node_count: None,
             connection_count: None,
             cron_job_count: None,
+            channel_count: None,
             channel_setting_count: None,
             has_settings: None,
             has_heartbeat: None,
@@ -818,6 +846,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
     let node_count = backup.mind_map_nodes.iter().filter(|n| !n.is_trunk).count();
     let connection_count = backup.mind_map_connections.len();
     let cron_job_count = backup.cron_jobs.len();
+    let channel_count = backup.channels.len();
     let channel_setting_count = backup.channel_settings.len();
     let has_settings = backup.bot_settings.is_some();
     let has_heartbeat = backup.heartbeat_config.is_some();
@@ -834,6 +863,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -854,6 +884,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -877,16 +908,18 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: Some(node_count),
                 connection_count: Some(connection_count),
                 cron_job_count: Some(cron_job_count),
+                channel_count: Some(channel_count),
                 channel_setting_count: Some(channel_setting_count),
                 has_settings: Some(has_settings),
                 has_heartbeat: Some(has_heartbeat),
                 message: Some(format!(
-                    "Backed up {} items ({} keys, {} nodes, {} connections, {} cron jobs, {} channel settings{}{})",
+                    "Backed up {} items ({} keys, {} nodes, {} connections, {} cron jobs, {} channels, {} channel settings{}{})",
                     item_count,
                     key_count,
                     node_count,
                     connection_count,
                     cron_job_count,
+                    channel_count,
                     channel_setting_count,
                     if has_settings { ", settings" } else { "" },
                     if has_heartbeat { ", heartbeat" } else { "" }
@@ -902,6 +935,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -917,6 +951,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -943,6 +978,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -963,6 +999,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -981,6 +1018,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -994,6 +1032,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             node_count: None,
             connection_count: None,
             cron_job_count: None,
+            channel_count: None,
             channel_setting_count: None,
             has_settings: None,
             has_heartbeat: None,
@@ -1011,6 +1050,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1031,6 +1071,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1055,6 +1096,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                         node_count: None,
                         connection_count: None,
                         cron_job_count: None,
+                        channel_count: None,
                         channel_setting_count: None,
                         has_settings: None,
                         has_heartbeat: None,
@@ -1116,6 +1158,16 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
         }
         Err(e) => {
             log::warn!("Failed to clear channel settings for restore: {}", e);
+        }
+    }
+
+    // Clear existing channels before restore (non-safe-mode only)
+    match state.db.clear_channels_for_restore() {
+        Ok(channels_deleted) => {
+            log::info!("Cleared {} channels for restore", channels_deleted);
+        }
+        Err(e) => {
+            log::warn!("Failed to clear channels for restore: {}", e);
         }
     }
 
@@ -1272,6 +1324,31 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
         }
     }
 
+    // Restore channels (already cleared above)
+    // We need to track old->new ID mapping for channel settings that reference channel IDs
+    let mut old_channel_to_new_id: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    let mut restored_channels = 0;
+    for channel in &backup_data.channels {
+        match state.db.create_channel(
+            &channel.channel_type,
+            &channel.name,
+            &channel.bot_token,
+            channel.app_token.as_deref(),
+        ) {
+            Ok(new_channel) => {
+                old_channel_to_new_id.insert(channel.id, new_channel.id);
+                // Restore enabled state
+                if channel.enabled {
+                    let _ = state.db.set_channel_enabled(new_channel.id, true);
+                }
+                restored_channels += 1;
+            }
+            Err(e) => {
+                log::warn!("Failed to restore channel {}: {}", channel.name, e);
+            }
+        }
+    }
+
     // Record retrieval in local state
     if let Some(wallet_address) = get_wallet_address(&private_key) {
         let _ = state.db.record_keystore_retrieval(&wallet_address);
@@ -1283,15 +1360,17 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
         node_count: Some(restored_nodes),
         connection_count: Some(restored_connections),
         cron_job_count: Some(restored_cron_jobs),
+        channel_count: Some(restored_channels),
         channel_setting_count: Some(restored_channel_settings),
         has_settings: Some(has_settings),
         has_heartbeat: Some(has_heartbeat),
         message: Some(format!(
-            "Restored {} keys, {} nodes, {} connections, {} cron jobs, {} channel settings{}{}",
+            "Restored {} keys, {} nodes, {} connections, {} cron jobs, {} channels, {} channel settings{}{}",
             restored_keys,
             restored_nodes,
             restored_connections,
             restored_cron_jobs,
+            restored_channels,
             restored_channel_settings,
             if has_settings { ", settings" } else { "" },
             if has_heartbeat { ", heartbeat" } else { "" }
@@ -1368,6 +1447,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1390,6 +1470,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1410,6 +1491,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1425,6 +1507,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
             node_count: None,
             connection_count: None,
             cron_job_count: None,
+            channel_count: None,
             channel_setting_count: None,
             has_settings: None,
             has_heartbeat: None,
@@ -1444,6 +1527,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1466,6 +1550,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1501,6 +1586,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
             node_count: Some(non_trunk_node_count),
             connection_count: Some(backup_data.mind_map_connections.len()),
             cron_job_count: Some(backup_data.cron_jobs.len()),
+            channel_count: Some(backup_data.channels.len()),
             channel_setting_count: Some(backup_data.channel_settings.len()),
             has_settings: Some(backup_data.bot_settings.is_some()),
             has_heartbeat: Some(backup_data.heartbeat_config.is_some()),
@@ -1522,6 +1608,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
                 node_count: None,
                 connection_count: None,
                 cron_job_count: None,
+                channel_count: None,
                 channel_setting_count: None,
                 has_settings: None,
                 has_heartbeat: None,
@@ -1549,6 +1636,7 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
         node_count: None,
         connection_count: None,
         cron_job_count: None,
+        channel_count: None,
         channel_setting_count: None,
         has_settings: None,
         has_heartbeat: None,

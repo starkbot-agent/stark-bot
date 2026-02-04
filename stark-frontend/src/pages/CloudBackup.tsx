@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud, Upload, Download, Shield, AlertCircle, CheckCircle, X, Key, Brain, Settings, Link2, RefreshCw, Clock, AlertTriangle, Heart } from 'lucide-react';
+import { Cloud, Upload, Download, Shield, AlertCircle, CheckCircle, X, Key, Brain, Settings, Link2, RefreshCw, Clock, AlertTriangle, Heart, MessageSquare } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { backupKeysToCloud, restoreKeysFromCloud, previewCloudBackup, CloudBackupPreview } from '@/lib/api';
@@ -64,7 +64,7 @@ export default function CloudBackup() {
       const result = await backupKeysToCloud();
       setMessage({
         type: 'success',
-        text: `Backup complete! ${result.key_count || 0} keys, ${result.node_count || 0} mind nodes, ${result.connection_count || 0} connections, ${result.cron_job_count || 0} cron jobs${result.has_settings ? ', settings' : ''}${result.has_heartbeat ? ', heartbeat' : ''}`
+        text: `Backup complete! ${result.key_count || 0} keys, ${result.node_count || 0} mind nodes, ${result.connection_count || 0} connections, ${result.cron_job_count || 0} cron jobs, ${result.channel_count || 0} channels${result.has_settings ? ', settings' : ''}${result.has_heartbeat ? ', heartbeat' : ''}`
       });
       setNoBackupWarning(false);
       // Refresh preview after successful backup
@@ -89,7 +89,7 @@ export default function CloudBackup() {
       const result = await restoreKeysFromCloud();
       setMessage({
         type: 'success',
-        text: `Restore complete! ${result.key_count || 0} keys, ${result.node_count || 0} mind nodes, ${result.connection_count || 0} connections, ${result.cron_job_count || 0} cron jobs${result.has_settings ? ', settings' : ''}${result.has_heartbeat ? ', heartbeat' : ''}`
+        text: `Restore complete! ${result.key_count || 0} keys, ${result.node_count || 0} mind nodes, ${result.connection_count || 0} connections, ${result.cron_job_count || 0} cron jobs, ${result.channel_count || 0} channels${result.has_settings ? ', settings' : ''}${result.has_heartbeat ? ', heartbeat' : ''}`
       });
     } catch (err) {
       setMessage({ type: 'error', text: formatKeystoreError(err) });
@@ -265,6 +265,13 @@ export default function CloudBackup() {
                   </div>
                   <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
                     <div className="flex items-center gap-2 mb-1">
+                      <MessageSquare className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs text-slate-400">Channels</span>
+                    </div>
+                    <span className="text-xl font-bold text-white">{previewData.channel_count || 0}</span>
+                  </div>
+                  <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                    <div className="flex items-center gap-2 mb-1">
                       <Settings className="w-4 h-4 text-green-400" />
                       <span className="text-xs text-slate-400">Bot Settings</span>
                     </div>
@@ -349,6 +356,13 @@ export default function CloudBackup() {
                   <div>
                     <p className="text-slate-300 font-medium">Cron Jobs</p>
                     <p className="text-slate-400 text-xs">Scheduled tasks and automation</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MessageSquare className="w-4 h-4 text-indigo-400 mt-0.5" />
+                  <div>
+                    <p className="text-slate-300 font-medium">Channels</p>
+                    <p className="text-slate-400 text-xs">Telegram, Discord, Slack channels with tokens</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
@@ -495,6 +509,12 @@ export default function CloudBackup() {
                   <Clock className="w-4 h-4 text-orange-400" />
                   <span className="text-sm text-slate-300">{previewData.cron_job_count || 0} Cron Jobs</span>
                 </div>
+                {(previewData.channel_count ?? 0) > 0 && (
+                  <div className="flex items-center gap-2 p-2 bg-slate-900/50 rounded-lg">
+                    <MessageSquare className="w-4 h-4 text-indigo-400" />
+                    <span className="text-sm text-slate-300">{previewData.channel_count} Channels</span>
+                  </div>
+                )}
                 {previewData.has_settings && (
                   <div className="flex items-center gap-2 p-2 bg-slate-900/50 rounded-lg">
                     <Settings className="w-4 h-4 text-green-400" />

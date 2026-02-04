@@ -830,6 +830,8 @@ export interface BackupResponse {
   node_count?: number;
   connection_count?: number;
   cron_job_count?: number;
+  channel_count?: number;
+  channel_setting_count?: number;
   has_settings?: boolean;
   has_heartbeat?: boolean;
   message?: string;
@@ -848,6 +850,8 @@ export interface CloudBackupPreview {
   node_count?: number;
   connection_count?: number;
   cron_job_count?: number;
+  channel_count?: number;
+  channel_setting_count?: number;
   has_settings?: boolean;
   has_heartbeat?: boolean;
   backup_version?: number;

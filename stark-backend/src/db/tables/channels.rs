@@ -284,6 +284,31 @@ impl Database {
         Ok(rows_affected > 0)
     }
 
+    /// List all non-safe-mode channels (for backup)
+    pub fn list_channels_for_backup(&self) -> SqliteResult<Vec<Channel>> {
+        let conn = self.conn();
+
+        let mut stmt = conn.prepare(
+            "SELECT id, channel_type, name, enabled, bot_token, app_token, safe_mode, created_at, updated_at
+             FROM external_channels WHERE safe_mode = 0 ORDER BY channel_type, name",
+        )?;
+
+        let channels = stmt
+            .query_map([], |row| Self::row_to_channel(row))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(channels)
+    }
+
+    /// Clear all non-safe-mode channels for restore (wipe before restore to prevent duplicates)
+    pub fn clear_channels_for_restore(&self) -> SqliteResult<usize> {
+        let conn = self.conn();
+        // Only delete non-safe-mode channels; safe mode channels are temporary
+        let rows_deleted = conn.execute("DELETE FROM external_channels WHERE safe_mode = 0", [])?;
+        Ok(rows_deleted)
+    }
+
     fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<Channel> {
         // Column order: id, channel_type, name, enabled, bot_token, app_token, safe_mode, created_at, updated_at
         let created_at_str: String = row.get(7)?;
