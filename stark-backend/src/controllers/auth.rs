@@ -63,6 +63,8 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/logout", web::post().to(logout))
             .route("/validate", web::get().to(validate)),
     );
+    // Flash mode auth - separate from /api/auth scope to allow redirect
+    cfg.route("/auth/flash", web::get().to(flash_login));
 }
 
 fn generate_challenge_text(public_address: &str, unix_timestamp: i64) -> String {
@@ -248,4 +250,103 @@ async fn validate(state: web::Data<AppState>, req: HttpRequest) -> impl Responde
             HttpResponse::Ok().json(ValidateResponse { valid: false })
         }
     }
+}
+
+// ==================== Flash Mode Auth ====================
+
+#[derive(Deserialize)]
+pub struct FlashLoginQuery {
+    token: String,
+}
+
+#[derive(Deserialize)]
+struct FlashValidateResponse {
+    valid: bool,
+    user_id: String,
+    username: String,
+    wallet_address: String,
+}
+
+/// Flash mode login - validates token against control plane and creates session
+///
+/// Called when user clicks "Open Dashboard" from Flash control plane.
+/// The token is validated server-side, then we create a local session
+/// and redirect to the dashboard with the session cookie set.
+async fn flash_login(
+    state: web::Data<AppState>,
+    query: web::Query<FlashLoginQuery>,
+) -> impl Responder {
+    use crate::wallet;
+
+    // Only allow in Flash mode
+    if !wallet::is_flash_mode() {
+        return HttpResponse::BadRequest().body("Flash login not available in standard mode");
+    }
+
+    // Get the Flash keystore URL from env
+    let keystore_url = match std::env::var("FLASH_KEYSTORE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            log::error!("FLASH_KEYSTORE_URL not set");
+            return HttpResponse::InternalServerError().body("Flash mode misconfigured");
+        }
+    };
+
+    // Validate token against control plane
+    let client = reqwest::Client::new();
+    let validate_url = format!("{}/api/auth/validate-token", keystore_url);
+
+    let response = match client
+        .post(&validate_url)
+        .json(&serde_json::json!({ "token": query.token }))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to validate Flash token: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to validate token");
+        }
+    };
+
+    if !response.status().is_success() {
+        log::warn!("Flash token validation failed: {}", response.status());
+        return HttpResponse::Unauthorized().body("Invalid or expired token");
+    }
+
+    let flash_user: FlashValidateResponse = match response.json().await {
+        Ok(u) => u,
+        Err(e) => {
+            log::error!("Failed to parse Flash validation response: {}", e);
+            return HttpResponse::InternalServerError().body("Invalid response from control plane");
+        }
+    };
+
+    if !flash_user.valid {
+        return HttpResponse::Unauthorized().body("Token validation failed");
+    }
+
+    log::info!(
+        "Flash login successful for user {} ({})",
+        flash_user.username,
+        flash_user.wallet_address
+    );
+
+    // Create a local session
+    // Use the wallet address as the session identifier (compatible with existing SIWE sessions)
+    let session = match state.db.create_session_for_address(Some(&flash_user.wallet_address)) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to create session: {}", e);
+            return HttpResponse::InternalServerError().body("Failed to create session");
+        }
+    };
+
+    // Redirect to dashboard with token in URL fragment
+    // The frontend will extract the token and store it
+    let redirect_url = format!("/#/auth?token={}&flash=true", session.token);
+
+    HttpResponse::Found()
+        .append_header(("Location", redirect_url))
+        .finish()
 }
