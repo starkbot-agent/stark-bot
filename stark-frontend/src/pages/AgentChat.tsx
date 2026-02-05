@@ -140,7 +140,7 @@ export default function AgentChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
   const { connected, on, off } = useGateway();
-  const { address, usdcBalance, isConnected: walletConnected, connect: connectWallet, isCorrectNetwork, currentNetwork, switchNetwork } = useWallet();
+  const { address, usdcBalance, isConnected: walletConnected, isLoading: walletLoading, error: walletError, isCorrectNetwork, currentNetwork, switchNetwork, walletMode } = useWallet();
 
   // Persist messages to localStorage
   useEffect(() => {
@@ -1388,10 +1388,17 @@ export default function AgentChat() {
             </div>
           </button>
 
-          {walletConnected && address ? (
+          {/* Wallet Info - always shown (no browser connection needed) */}
+          {walletLoading ? (
+            <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1.5 rounded-lg">
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+              <span className="text-sm text-slate-400">Loading wallet...</span>
+            </div>
+          ) : walletConnected && address ? (
             <div className="flex items-center gap-3">
-              {/* Wallet Address */}
+              {/* Wallet Address Badge */}
               <div className="flex items-center gap-2 bg-slate-700/50 px-3 py-1.5 rounded-lg">
+                <Wallet className="w-4 h-4 text-slate-400" />
                 <span className="text-sm font-mono text-slate-300">
                   {truncateAddress(address)}
                 </span>
@@ -1406,6 +1413,11 @@ export default function AgentChat() {
                     <Copy className="w-4 h-4" />
                   )}
                 </button>
+                {walletMode && (
+                  <span className="text-xs px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded font-medium ml-1">
+                    {walletMode === 'flash' ? 'Flash' : walletMode === 'standard' ? 'Std' : walletMode}
+                  </span>
+                )}
               </div>
 
               {/* USDC Balance with Network Selector */}
@@ -1458,13 +1470,12 @@ export default function AgentChat() {
               </div>
             </div>
           ) : (
-            <button
-              onClick={connectWallet}
-              className="flex items-center gap-2 bg-stark-500/20 hover:bg-stark-500/30 text-stark-400 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Wallet className="w-4 h-4" />
-              Connect Wallet
-            </button>
+            <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg">
+              <Wallet className="w-4 h-4 text-amber-400" />
+              <span className="text-sm text-amber-400">
+                {walletError || 'No Wallet Configured'}
+              </span>
+            </div>
           )}
 
           <SubagentBadge

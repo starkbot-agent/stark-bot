@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
+import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle, Copy, Check, Wallet } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -9,6 +9,7 @@ import {
   updateBotSettings,
   getRpcProviders,
   getAutoSyncStatus,
+  getConfigStatus,
   BotSettings as BotSettingsType,
   RpcProvider,
   AutoSyncStatus,
@@ -27,6 +28,9 @@ export default function BotSettings() {
   const [safeModeMaxQueries, setSafeModeMaxQueries] = useState(5);
   const [keystoreUrl, setKeystoreUrl] = useState('');
   const [autoSyncStatus, setAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string>('');
+  const [walletMode, setWalletMode] = useState<string>('');
+  const [walletCopied, setWalletCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -35,7 +39,31 @@ export default function BotSettings() {
     loadSettings();
     loadRpcProviders();
     loadAutoSyncStatus();
+    loadWalletConfig();
   }, []);
+
+  const loadWalletConfig = async () => {
+    try {
+      const config = await getConfigStatus();
+      setWalletAddress(config.wallet_address || '');
+      setWalletMode(config.wallet_mode || '');
+    } catch (err) {
+      console.error('Failed to load wallet config:', err);
+    }
+  };
+
+  const copyWalletAddress = () => {
+    if (walletAddress) {
+      navigator.clipboard.writeText(walletAddress);
+      setWalletCopied(true);
+      setTimeout(() => setWalletCopied(false), 2000);
+    }
+  };
+
+  const truncateAddress = (addr: string) => {
+    if (!addr || addr.length < 10) return addr;
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
 
   const loadAutoSyncStatus = async () => {
     try {
@@ -224,6 +252,51 @@ export default function BotSettings() {
             <p className="text-xs text-slate-500 -mt-2">
               Used for git commit author email
             </p>
+
+            {/* Wallet Address (read-only) */}
+            <div className="pt-4 border-t border-slate-700">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Wallet Address
+              </label>
+              {walletAddress ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg flex-1">
+                    <Wallet className="w-4 h-4 text-slate-400" />
+                    <span className="font-mono text-sm text-white">{truncateAddress(walletAddress)}</span>
+                    <span className="font-mono text-xs text-slate-500 hidden sm:inline">({walletAddress})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyWalletAddress}
+                    className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+                    title="Copy full address"
+                  >
+                    {walletCopied ? (
+                      <Check className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-slate-400" />
+                    )}
+                  </button>
+                  {walletMode && (
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${
+                      walletMode === 'flash'
+                        ? 'bg-purple-500/20 text-purple-400'
+                        : 'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      {walletMode === 'flash' ? 'Flash Mode' : walletMode === 'standard' ? 'Standard' : walletMode}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-2 rounded-lg">
+                  <Wallet className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm text-amber-400">No wallet configured</span>
+                </div>
+              )}
+              <p className="text-xs text-slate-500 mt-1">
+                The wallet address used by the bot for transactions. Configure in environment variables.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
