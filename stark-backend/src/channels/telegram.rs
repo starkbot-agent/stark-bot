@@ -318,28 +318,21 @@ pub async fn start_telegram_listener(
 
                 // Only handle text messages
                 if let Some(text) = msg.text() {
-                    // In group chats, only respond if bot is @mentioned, replied to, or /command
-                    let is_private_chat = msg.chat.is_private();
+                    // Only respond if bot is @mentioned or replied to (all chat types including DMs)
+                    let mentioned = is_bot_mentioned(text, &bot_username);
+                    let is_reply_to_bot = msg.reply_to_message()
+                        .and_then(|r| r.from())
+                        .map(|u| u.id == bot_user_id)
+                        .unwrap_or(false);
 
-                    if !is_private_chat {
-                        let mentioned = is_bot_mentioned(text, &bot_username);
-                        let is_reply_to_bot = msg.reply_to_message()
-                            .and_then(|r| r.from())
-                            .map(|u| u.id == bot_user_id)
-                            .unwrap_or(false);
-                        let is_command = text.starts_with('/');
+                    log::info!(
+                        "Telegram: Chat {} — mentioned={}, reply_to_bot={}, bot_username=@{}",
+                        msg.chat.id, mentioned, is_reply_to_bot, bot_username
+                    );
 
-                        log::info!(
-                            "Telegram: Group chat {} — mentioned={}, reply_to_bot={}, command={}, bot_username=@{}",
-                            msg.chat.id, mentioned, is_reply_to_bot, is_command, bot_username
-                        );
-
-                        if !mentioned && !is_reply_to_bot && !is_command {
-                            log::info!("Telegram: Ignoring message in group (bot not mentioned/replied/commanded)");
-                            return Ok(());
-                        }
-                    } else {
-                        log::info!("Telegram: Private chat {} — processing all messages", msg.chat.id);
+                    if !mentioned && !is_reply_to_bot {
+                        log::debug!("Telegram: Ignoring message (bot not @mentioned or replied to)");
+                        return Ok(());
                     }
 
                     // Strip bot @mention from text
