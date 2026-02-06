@@ -26,7 +26,7 @@ impl TwitterPostTool {
             "text".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "The text content of the tweet (max 280 characters)".to_string(),
+                description: "The text content of the tweet".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -122,9 +122,9 @@ impl Tool for TwitterPostTool {
         if params.text.is_empty() {
             return ToolResult::error("Tweet text cannot be empty");
         }
-        if params.text.chars().count() > 280 {
+        if params.text.chars().count() > 25_000 {
             return ToolResult::error(format!(
-                "Tweet exceeds 280 characters (got {})",
+                "Tweet exceeds maximum character limit (got {})",
                 params.text.chars().count()
             ));
         }

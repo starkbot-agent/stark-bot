@@ -43,8 +43,8 @@ quote_tweet_id: "1234567890123456789"
 
 ## Guidelines
 
-- Max 280 characters per tweet
-- Keep it concise and punchy
+- Keep tweets succinct (under ~500 characters when possible)
+- Concise and punchy is best
 - Threads: post multiple tweets replying to each other
 - The tool returns the tweet URL on success
 

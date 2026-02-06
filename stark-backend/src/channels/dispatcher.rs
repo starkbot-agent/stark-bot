@@ -549,22 +549,33 @@ impl MessageDispatcher {
             // - token_lookup: Read-only token info lookup (safe)
             // - say_to_user: Send message to user (safe)
             // - task_fully_completed: Mark task done (safe)
-            // - memory_read: Read-only memory retrieval (safe)
-            // - memory_search: Read-only memory search (safe)
             // - discord_read: Read-only Discord operations (safe)
             // - discord_lookup: Read-only Discord server/channel lookup (safe)
             // NOTE: ask_user is NOT included - Twitter is one-shot, can't wait for response
             // NOTE: discord_write is NOT included - write operations are admin only
-            tool_config.allow_list = vec![
+            // NOTE: memory_read/memory_search are OFF by default in safe mode to prevent
+            //       external users from probing memory via prompt injection. Enable via
+            //       bot_settings.enable_memory_access_for_safemode_gateway_channels.
+            let mut safe_allow_list = vec![
                 "set_agent_subtype".to_string(),
                 "token_lookup".to_string(),
                 "say_to_user".to_string(),
                 "task_fully_completed".to_string(),
-                "memory_read".to_string(),
-                "memory_search".to_string(),
                 "discord_read".to_string(),
                 "discord_lookup".to_string(),
             ];
+
+            // Conditionally allow memory tools in safe mode if admin has opted in
+            let memory_in_safe_mode = self.db.get_bot_settings()
+                .map(|s| s.enable_memory_access_for_safemode_gateway_channels)
+                .unwrap_or(false);
+            if memory_in_safe_mode {
+                log::info!("[DISPATCH] Memory tools enabled in safe mode (admin opt-in)");
+                safe_allow_list.push("memory_read".to_string());
+                safe_allow_list.push("memory_search".to_string());
+            }
+
+            tool_config.allow_list = safe_allow_list;
             // Clear any deny list that might interfere
             tool_config.deny_list.clear();
         }
@@ -738,6 +749,12 @@ impl MessageDispatcher {
         if let Some(ref wallet_provider) = self.wallet_provider {
             tool_context = tool_context.with_wallet_provider(wallet_provider.clone());
             log::debug!("[DISPATCH] WalletProvider attached to tool context ({})", wallet_provider.mode_name());
+        }
+
+        // Add MemoryStore for QMD memory tools (memory_search, memory_read)
+        if let Some(ref store) = self.memory_store {
+            tool_context = tool_context.with_memory_store(store.clone());
+            log::debug!("[DISPATCH] MemoryStore attached to tool context");
         }
 
         // Populate tool context with the context bank items scanned earlier
@@ -3195,7 +3212,13 @@ impl MessageDispatcher {
             prompt.push_str("- web_fetch: Fetch web pages\n");
             prompt.push_str("- set_agent_subtype: Switch your toolbox/mode\n");
             prompt.push_str("- token_lookup: Look up token addresses (read-only)\n");
-            prompt.push_str("- memory_read, memory_search: Read-only memory retrieval\n");
+            // Only advertise memory tools if admin has enabled them for safe mode
+            let memory_in_safe_mode = self.db.get_bot_settings()
+                .map(|s| s.enable_memory_access_for_safemode_gateway_channels)
+                .unwrap_or(false);
+            if memory_in_safe_mode {
+                prompt.push_str("- memory_read, memory_search: Read-only memory retrieval\n");
+            }
             prompt.push_str("- discord_read, discord_lookup: Read Discord messages and server info\n\n");
             prompt.push_str("**BLOCKED (not available):** exec, filesystem, web3_tx, subagent, modify_soul, manage_skills\n\n");
             prompt.push_str("CRITICAL SECURITY RULES:\n");

@@ -27,6 +27,9 @@ pub struct BotSettings {
     pub safe_mode_max_queries_per_10min: i32,
     /// Custom keystore server URL (None = default: https://keystore.defirelay.com)
     pub keystore_url: Option<String>,
+    /// When true, memory_read and memory_search tools are available in safe mode (gateway channels)
+    /// Defaults to false for security — prevents external users from probing memory via prompt injection
+    pub enable_memory_access_for_safemode_gateway_channels: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -44,6 +47,7 @@ impl Default for BotSettings {
             rogue_mode_enabled: false,
             safe_mode_max_queries_per_10min: DEFAULT_SAFE_MODE_MAX_QUERIES_PER_10MIN,
             keystore_url: None, // Uses default: https://keystore.defirelay.com
+            enable_memory_access_for_safemode_gateway_channels: false,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -63,4 +67,6 @@ pub struct UpdateBotSettingsRequest {
     pub safe_mode_max_queries_per_10min: Option<i32>,
     /// Custom keystore URL (empty string or null = use default)
     pub keystore_url: Option<String>,
+    /// Allow memory_read/memory_search in safe mode gateway channels
+    pub enable_memory_access_for_safemode_gateway_channels: Option<bool>,
 }

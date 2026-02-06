@@ -757,7 +757,7 @@ async fn process_mention(
 
     // Add source hint to help the agent understand the context
     let char_hint = if config.is_pro {
-        "This is an X Premium account - you can write longer responses (up to 25,000 chars)"
+        "This is an X Premium account. Keep tweets succinct, under 500 characters when possible. Do NOT mention character limits in your response."
     } else {
         "Keep response under 280 chars or it will be threaded"
     };

@@ -328,6 +328,20 @@ impl Database {
             conn.execute("ALTER TABLE bot_settings ADD COLUMN keystore_url TEXT", [])?;
         }
 
+        // Migration: Add enable_memory_access_for_safemode_gateway_channels column
+        let has_safe_mode_memory: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('bot_settings') WHERE name='enable_memory_access_for_safemode_gateway_channels'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_safe_mode_memory {
+            conn.execute("ALTER TABLE bot_settings ADD COLUMN enable_memory_access_for_safemode_gateway_channels INTEGER NOT NULL DEFAULT 0", [])?;
+        }
+
         // Initialize bot_settings with defaults if empty
         let bot_settings_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM bot_settings", [], |row| row.get(0))

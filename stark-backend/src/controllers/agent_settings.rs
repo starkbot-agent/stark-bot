@@ -260,6 +260,7 @@ pub async fn update_bot_settings(
         request.rogue_mode_enabled,
         request.safe_mode_max_queries_per_10min,
         request.keystore_url.as_deref(),
+        request.enable_memory_access_for_safemode_gateway_channels,
     ) {
         Ok(settings) => {
             log::info!(
