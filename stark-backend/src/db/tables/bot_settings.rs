@@ -13,7 +13,7 @@ impl Database {
         let conn = self.conn();
 
         let result = conn.query_row(
-            "SELECT id, bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, enable_memory_access_for_safemode_gateway_channels, created_at, updated_at FROM bot_settings LIMIT 1",
+            "SELECT id, bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, created_at, updated_at FROM bot_settings LIMIT 1",
             [],
             |row| {
                 let web3_tx_confirmation: i64 = row.get(3)?;
@@ -23,9 +23,8 @@ impl Database {
                 let rogue_mode_enabled: i64 = row.get::<_, Option<i64>>(7)?.unwrap_or(0);
                 let safe_mode_max_queries: i32 = row.get::<_, Option<i32>>(8)?.unwrap_or(DEFAULT_SAFE_MODE_MAX_QUERIES_PER_10MIN);
                 let keystore_url: Option<String> = row.get(9)?;
-                let enable_memory_safe_mode: i64 = row.get::<_, Option<i64>>(10)?.unwrap_or(0);
-                let created_at_str: String = row.get(11)?;
-                let updated_at_str: String = row.get(12)?;
+                let created_at_str: String = row.get(10)?;
+                let updated_at_str: String = row.get(11)?;
 
                 let custom_rpc_endpoints: Option<HashMap<String, String>> = custom_rpc_endpoints_json
                     .and_then(|json| serde_json::from_str(&json).ok());
@@ -41,7 +40,6 @@ impl Database {
                     rogue_mode_enabled: rogue_mode_enabled != 0,
                     safe_mode_max_queries_per_10min: safe_mode_max_queries,
                     keystore_url,
-                    enable_memory_access_for_safemode_gateway_channels: enable_memory_safe_mode != 0,
                     created_at: DateTime::parse_from_rfc3339(&created_at_str)
                         .unwrap()
                         .with_timezone(&Utc),
@@ -65,7 +63,7 @@ impl Database {
         bot_email: Option<&str>,
         web3_tx_requires_confirmation: Option<bool>,
     ) -> SqliteResult<BotSettings> {
-        self.update_bot_settings_full(bot_name, bot_email, web3_tx_requires_confirmation, None, None, None, None, None, None, None)
+        self.update_bot_settings_full(bot_name, bot_email, web3_tx_requires_confirmation, None, None, None, None, None, None)
     }
 
     /// Update bot settings with all fields including RPC config and keystore URL
@@ -80,7 +78,6 @@ impl Database {
         rogue_mode_enabled: Option<bool>,
         safe_mode_max_queries_per_10min: Option<i32>,
         keystore_url: Option<&str>,
-        enable_memory_access_for_safemode_gateway_channels: Option<bool>,
     ) -> SqliteResult<BotSettings> {
         let conn = self.conn();
         let now = Utc::now().to_rfc3339();
@@ -152,12 +149,6 @@ impl Database {
                     rusqlite::params![url_value, &now],
                 )?;
             }
-            if let Some(enable_memory) = enable_memory_access_for_safemode_gateway_channels {
-                conn.execute(
-                    "UPDATE bot_settings SET enable_memory_access_for_safemode_gateway_channels = ?1, updated_at = ?2",
-                    rusqlite::params![if enable_memory { 1 } else { 0 }, &now],
-                )?;
-            }
         } else {
             // Insert new
             let name = bot_name.unwrap_or("StarkBot");
@@ -167,14 +158,13 @@ impl Database {
             let max_iterations = max_tool_iterations.unwrap_or(DEFAULT_MAX_TOOL_ITERATIONS);
             let rogue_mode = rogue_mode_enabled.unwrap_or(false);
             let safe_mode_queries = safe_mode_max_queries_per_10min.unwrap_or(DEFAULT_SAFE_MODE_MAX_QUERIES_PER_10MIN);
-            let enable_memory = enable_memory_access_for_safemode_gateway_channels.unwrap_or(false);
             let endpoints_json = custom_rpc_endpoints
                 .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string()));
             // Empty string means no custom URL (use default)
             let keystore_url_value: Option<&str> = keystore_url.filter(|u| !u.is_empty());
             conn.execute(
-                "INSERT INTO bot_settings (bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, enable_memory_access_for_safemode_gateway_channels, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                rusqlite::params![name, email, if confirmation { 1 } else { 0 }, provider, endpoints_json, max_iterations, if rogue_mode { 1 } else { 0 }, safe_mode_queries, keystore_url_value, if enable_memory { 1 } else { 0 }, &now, &now],
+                "INSERT INTO bot_settings (bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![name, email, if confirmation { 1 } else { 0 }, provider, endpoints_json, max_iterations, if rogue_mode { 1 } else { 0 }, safe_mode_queries, keystore_url_value, &now, &now],
             )?;
         }
 

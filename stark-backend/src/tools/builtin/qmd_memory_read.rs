@@ -1,6 +1,7 @@
 //! QMD Memory Read Tool
 //!
 //! Read specific memory files or memory types.
+//! In safe mode, access is sandboxed to the safemode/ memory directory only.
 
 use crate::tools::registry::Tool;
 use crate::tools::types::{
@@ -95,6 +96,16 @@ struct ReadParams {
     list: Option<bool>,
 }
 
+/// Check if tool context indicates safe mode
+fn is_safe_mode(context: &ToolContext) -> bool {
+    context.extra.get("safe_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Safe mode identity — all reads are scoped to safemode/ directory
+const SAFE_MODE_IDENTITY: &str = "safemode";
+
 #[async_trait]
 impl Tool for QmdMemoryReadTool {
     fn definition(&self) -> ToolDefinition {
@@ -117,13 +128,26 @@ impl Tool for QmdMemoryReadTool {
             }
         };
 
-        // Get identity from context for identity-specific memories
-        let identity_id = context.identity_id.as_deref();
+        let safe_mode = is_safe_mode(context);
+
+        // In safe mode, override identity to "safemode" so all reads are sandboxed
+        let identity_id: Option<&str> = if safe_mode {
+            Some(SAFE_MODE_IDENTITY)
+        } else {
+            context.identity_id.as_deref()
+        };
 
         // Handle list request
         if params.list.unwrap_or(false) {
             return match memory_store.list_files() {
                 Ok(files) => {
+                    // In safe mode, filter to only safemode/ files
+                    let files: Vec<_> = if safe_mode {
+                        files.into_iter().filter(|f| f.starts_with("safemode/")).collect()
+                    } else {
+                        files
+                    };
+
                     if files.is_empty() {
                         return ToolResult::success("No memory files found.");
                     }
@@ -144,6 +168,11 @@ impl Tool for QmdMemoryReadTool {
 
         // Handle specific file request
         if let Some(file_path) = params.file {
+            // In safe mode, block reads outside safemode/ directory
+            if safe_mode && !file_path.starts_with("safemode/") {
+                return ToolResult::error("Access denied: safe mode only allows reading from safemode/ memory.");
+            }
+
             return match memory_store.get_file(&file_path) {
                 Ok(content) => {
                     if content.is_empty() {

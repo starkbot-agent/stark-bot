@@ -549,33 +549,22 @@ impl MessageDispatcher {
             // - token_lookup: Read-only token info lookup (safe)
             // - say_to_user: Send message to user (safe)
             // - task_fully_completed: Mark task done (safe)
+            // - memory_read: Read-only memory retrieval (sandboxed to safemode/ in safe mode)
+            // - memory_search: Read-only memory search (sandboxed to safemode/ in safe mode)
             // - discord_read: Read-only Discord operations (safe)
             // - discord_lookup: Read-only Discord server/channel lookup (safe)
             // NOTE: ask_user is NOT included - Twitter is one-shot, can't wait for response
             // NOTE: discord_write is NOT included - write operations are admin only
-            // NOTE: memory_read/memory_search are OFF by default in safe mode to prevent
-            //       external users from probing memory via prompt injection. Enable via
-            //       bot_settings.enable_memory_access_for_safemode_gateway_channels.
-            let mut safe_allow_list = vec![
+            tool_config.allow_list = vec![
                 "set_agent_subtype".to_string(),
                 "token_lookup".to_string(),
                 "say_to_user".to_string(),
                 "task_fully_completed".to_string(),
+                "memory_read".to_string(),
+                "memory_search".to_string(),
                 "discord_read".to_string(),
                 "discord_lookup".to_string(),
             ];
-
-            // Conditionally allow memory tools in safe mode if admin has opted in
-            let memory_in_safe_mode = self.db.get_bot_settings()
-                .map(|s| s.enable_memory_access_for_safemode_gateway_channels)
-                .unwrap_or(false);
-            if memory_in_safe_mode {
-                log::info!("[DISPATCH] Memory tools enabled in safe mode (admin opt-in)");
-                safe_allow_list.push("memory_read".to_string());
-                safe_allow_list.push("memory_search".to_string());
-            }
-
-            tool_config.allow_list = safe_allow_list;
             // Clear any deny list that might interfere
             tool_config.deny_list.clear();
         }
@@ -755,6 +744,14 @@ impl MessageDispatcher {
         if let Some(ref store) = self.memory_store {
             tool_context = tool_context.with_memory_store(store.clone());
             log::debug!("[DISPATCH] MemoryStore attached to tool context");
+        }
+
+        // Pass safe mode flag to tool context so tools can sandbox themselves
+        if is_safe_mode {
+            tool_context.extra.insert(
+                "safe_mode".to_string(),
+                serde_json::json!(true),
+            );
         }
 
         // Populate tool context with the context bank items scanned earlier
@@ -3212,13 +3209,7 @@ impl MessageDispatcher {
             prompt.push_str("- web_fetch: Fetch web pages\n");
             prompt.push_str("- set_agent_subtype: Switch your toolbox/mode\n");
             prompt.push_str("- token_lookup: Look up token addresses (read-only)\n");
-            // Only advertise memory tools if admin has enabled them for safe mode
-            let memory_in_safe_mode = self.db.get_bot_settings()
-                .map(|s| s.enable_memory_access_for_safemode_gateway_channels)
-                .unwrap_or(false);
-            if memory_in_safe_mode {
-                prompt.push_str("- memory_read, memory_search: Read-only memory retrieval\n");
-            }
+            prompt.push_str("- memory_read, memory_search: Read-only memory retrieval (public memory only)\n");
             prompt.push_str("- discord_read, discord_lookup: Read Discord messages and server info\n\n");
             prompt.push_str("**BLOCKED (not available):** exec, filesystem, web3_tx, subagent, modify_soul, manage_skills\n\n");
             prompt.push_str("CRITICAL SECURITY RULES:\n");
@@ -3244,48 +3235,68 @@ impl MessageDispatcher {
         }
 
         // QMD Memory System: Read from markdown files
+        // In safe mode, use segregated "safemode" memory (memory/safemode/MEMORY.md)
+        // to prevent leaking sensitive data from admin sessions to external users.
+        // No daily log or global memory in safe mode — only curated long-term memory.
         if let Some(ref memory_store) = self.memory_store {
-            // Add long-term memory (MEMORY.md)
-            if let Ok(long_term) = memory_store.get_long_term(Some(identity_id)) {
-                if !long_term.is_empty() {
-                    prompt.push_str("## Long-Term Memory\n");
-                    // Truncate if too long (keep last 2000 chars for recency)
-                    let content = if long_term.len() > 2000 {
-                        format!("...\n{}", &long_term[long_term.len() - 2000..])
-                    } else {
-                        long_term
-                    };
-                    prompt.push_str(&content);
-                    prompt.push_str("\n\n");
+            if is_safe_mode {
+                // Safe mode: only inject curated safemode memory
+                if let Ok(safe_memory) = memory_store.get_long_term(Some("safemode")) {
+                    if !safe_memory.is_empty() {
+                        prompt.push_str("## Memory\n");
+                        let content = if safe_memory.len() > 2000 {
+                            format!("...\n{}", &safe_memory[safe_memory.len() - 2000..])
+                        } else {
+                            safe_memory
+                        };
+                        prompt.push_str(&content);
+                        prompt.push_str("\n\n");
+                    }
                 }
-            }
-
-            // Add today's activity (daily log)
-            if let Ok(daily_log) = memory_store.get_daily_log(Some(identity_id)) {
-                if !daily_log.is_empty() {
-                    prompt.push_str("## Today's Activity\n");
-                    // Truncate if too long
-                    let content = if daily_log.len() > 1000 {
-                        format!("...\n{}", &daily_log[daily_log.len() - 1000..])
-                    } else {
-                        daily_log
-                    };
-                    prompt.push_str(&content);
-                    prompt.push_str("\n\n");
+            } else {
+                // Standard mode: full memory access
+                // Add long-term memory (MEMORY.md)
+                if let Ok(long_term) = memory_store.get_long_term(Some(identity_id)) {
+                    if !long_term.is_empty() {
+                        prompt.push_str("## Long-Term Memory\n");
+                        // Truncate if too long (keep last 2000 chars for recency)
+                        let content = if long_term.len() > 2000 {
+                            format!("...\n{}", &long_term[long_term.len() - 2000..])
+                        } else {
+                            long_term
+                        };
+                        prompt.push_str(&content);
+                        prompt.push_str("\n\n");
+                    }
                 }
-            }
 
-            // Also check global (non-identity) memories
-            if let Ok(global_long_term) = memory_store.get_long_term(None) {
-                if !global_long_term.is_empty() {
-                    prompt.push_str("## Global Memory\n");
-                    let content = if global_long_term.len() > 1500 {
-                        format!("...\n{}", &global_long_term[global_long_term.len() - 1500..])
-                    } else {
-                        global_long_term
-                    };
-                    prompt.push_str(&content);
-                    prompt.push_str("\n\n");
+                // Add today's activity (daily log)
+                if let Ok(daily_log) = memory_store.get_daily_log(Some(identity_id)) {
+                    if !daily_log.is_empty() {
+                        prompt.push_str("## Today's Activity\n");
+                        // Truncate if too long
+                        let content = if daily_log.len() > 1000 {
+                            format!("...\n{}", &daily_log[daily_log.len() - 1000..])
+                        } else {
+                            daily_log
+                        };
+                        prompt.push_str(&content);
+                        prompt.push_str("\n\n");
+                    }
+                }
+
+                // Also check global (non-identity) memories
+                if let Ok(global_long_term) = memory_store.get_long_term(None) {
+                    if !global_long_term.is_empty() {
+                        prompt.push_str("## Global Memory\n");
+                        let content = if global_long_term.len() > 1500 {
+                            format!("...\n{}", &global_long_term[global_long_term.len() - 1500..])
+                        } else {
+                            global_long_term
+                        };
+                        prompt.push_str(&content);
+                        prompt.push_str("\n\n");
+                    }
                 }
             }
         }

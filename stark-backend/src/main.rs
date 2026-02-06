@@ -360,7 +360,6 @@ async fn restore_backup_data(
             Some(settings.rogue_mode_enabled),
             settings.safe_mode_max_queries_per_10min,
             None, // Don't restore keystore_url - it's infrastructure config
-            None, // Don't restore memory safe mode setting - security-sensitive
         ) {
             Ok(_) => log::info!("[Keystore] Restored bot settings"),
             Err(e) => log::warn!("[Keystore] Failed to restore bot settings: {}", e),

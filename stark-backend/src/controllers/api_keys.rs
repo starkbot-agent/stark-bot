@@ -1403,7 +1403,6 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             Some(settings.rogue_mode_enabled),
             settings.safe_mode_max_queries_per_10min,
             None, // Don't restore keystore_url - it's infrastructure config
-            None, // Don't restore memory safe mode setting - security-sensitive
         ) {
             log::warn!("Failed to restore bot settings: {}", e);
         }

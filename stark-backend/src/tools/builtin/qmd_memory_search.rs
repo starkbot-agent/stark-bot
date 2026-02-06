@@ -1,6 +1,7 @@
 //! QMD Memory Search Tool
 //!
-//! Full-text search across all memory markdown files using FTS5 BM25 ranking.
+//! Full-text search across memory markdown files using FTS5 BM25 ranking.
+//! In safe mode, results are sandboxed to the safemode/ memory directory only.
 
 use crate::tools::registry::Tool;
 use crate::tools::types::{
@@ -69,6 +70,13 @@ struct SearchParams {
     limit: Option<i32>,
 }
 
+/// Check if tool context indicates safe mode
+fn is_safe_mode(context: &ToolContext) -> bool {
+    context.extra.get("safe_mode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 #[async_trait]
 impl Tool for QmdMemorySearchTool {
     fn definition(&self) -> ToolDefinition {
@@ -96,11 +104,28 @@ impl Tool for QmdMemorySearchTool {
             }
         };
 
-        let limit = params.limit.unwrap_or(10).min(50).max(1);
+        let safe_mode = is_safe_mode(context);
+        // In safe mode, request more results so we have enough after filtering
+        let search_limit = if safe_mode {
+            params.limit.unwrap_or(10).min(50).max(1) * 3
+        } else {
+            params.limit.unwrap_or(10).min(50).max(1)
+        };
+        let result_limit = params.limit.unwrap_or(10).min(50).max(1);
 
         // Perform search
-        match memory_store.search(&params.query, limit) {
+        match memory_store.search(&params.query, search_limit) {
             Ok(results) => {
+                // In safe mode, filter to only safemode/ directory files
+                let results: Vec<_> = if safe_mode {
+                    results.into_iter()
+                        .filter(|r| r.file_path.starts_with("safemode/"))
+                        .take(result_limit as usize)
+                        .collect()
+                } else {
+                    results.into_iter().take(result_limit as usize).collect()
+                };
+
                 if results.is_empty() {
                     return ToolResult::success(format!(
                         "No memories found matching: \"{}\"",
