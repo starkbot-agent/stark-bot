@@ -4,52 +4,131 @@ use crate::db::Database;
 use crate::gateway::events::EventBroadcaster;
 use crate::gateway::protocol::GatewayEvent;
 use crate::models::channel_settings::ChannelSettingKey;
-use crate::models::Channel;
+use crate::models::{Channel, ToolOutputVerbosity};
+use rand::seq::SliceRandom;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use teloxide::requests::Requester;
+use teloxide::types::MessageId;
 use tokio::sync::oneshot;
 
-/// Format a tool call event for Telegram display (plain text for reliability)
-fn format_tool_call_for_telegram(tool_name: &str, parameters: &serde_json::Value) -> String {
-    let params_str = serde_json::to_string_pretty(parameters)
-        .unwrap_or_else(|_| parameters.to_string());
-    // Truncate params if too long for Telegram
-    let params_display = if params_str.len() > 500 {
-        format!("{}...", &params_str[..500])
-    } else {
-        params_str
-    };
-    format!("🔧 Tool Call: {}\n{}", tool_name, params_display)
-}
-
-/// Format a tool result event for Telegram display (plain text for reliability)
-fn format_tool_result_for_telegram(tool_name: &str, success: bool, duration_ms: i64, content: &str) -> String {
-    let status = if success { "✅" } else { "❌" };
-    // Truncate content if too long
-    let content_display = if content.len() > 1000 {
-        format!("{}...", &content[..1000])
-    } else {
-        content.to_string()
-    };
-    format!(
-        "{} Tool Result: {} ({} ms)\n{}",
-        status, tool_name, duration_ms, content_display
-    )
-}
-
-/// Format an agent mode change for Telegram display
-fn format_mode_change_for_telegram(mode: &str, label: &str, reason: Option<&str>) -> String {
-    let emoji = match mode {
-        "explore" => "🔍",
-        "plan" => "📋",
-        "perform" => "⚡",
-        _ => "🔄",
-    };
-    match reason {
-        Some(r) => format!("{} Mode: {} - {}", emoji, label, r),
-        None => format!("{} Mode: {}", emoji, label),
+/// Format a tool call event for Telegram display based on verbosity
+fn format_tool_call_for_telegram(
+    tool_name: &str,
+    parameters: &serde_json::Value,
+    verbosity: ToolOutputVerbosity,
+) -> Option<String> {
+    match verbosity {
+        ToolOutputVerbosity::None => None,
+        ToolOutputVerbosity::Minimal => Some(format!("🔧 Calling: {}", tool_name)),
+        ToolOutputVerbosity::Full => {
+            let params_str = serde_json::to_string_pretty(parameters)
+                .unwrap_or_else(|_| parameters.to_string());
+            let params_display = if params_str.len() > 500 {
+                format!("{}...", &params_str[..500])
+            } else {
+                params_str
+            };
+            Some(format!("🔧 Tool Call: {}\n{}", tool_name, params_display))
+        }
     }
+}
+
+/// Format a tool result event for Telegram display based on verbosity
+fn format_tool_result_for_telegram(
+    tool_name: &str,
+    success: bool,
+    duration_ms: i64,
+    content: &str,
+    verbosity: ToolOutputVerbosity,
+) -> Option<String> {
+    let status = if success { "✅" } else { "❌" };
+    match verbosity {
+        ToolOutputVerbosity::None => None,
+        ToolOutputVerbosity::Minimal => {
+            if tool_name == "say_to_user" {
+                Some(format!("{} {}", status, content))
+            } else {
+                Some(format!(
+                    "{} Result: {} ({} ms)",
+                    status, tool_name, duration_ms
+                ))
+            }
+        }
+        ToolOutputVerbosity::Full => {
+            let content_display = if content.len() > 1000 {
+                format!("{}...", &content[..1000])
+            } else {
+                content.to_string()
+            };
+            Some(format!(
+                "{} Tool Result: {} ({} ms)\n{}",
+                status, tool_name, duration_ms, content_display
+            ))
+        }
+    }
+}
+
+/// Check if the bot is @mentioned in the message text (case-insensitive)
+fn is_bot_mentioned(text: &str, bot_username: &str) -> bool {
+    text.to_lowercase()
+        .contains(&format!("@{}", bot_username.to_lowercase()))
+}
+
+/// Strip bot @mention from text (case-insensitive)
+fn strip_bot_mention(text: &str, bot_username: &str) -> String {
+    let mention_lower = format!("@{}", bot_username.to_lowercase());
+    let text_lower = text.to_lowercase();
+    let mut result = String::with_capacity(text.len());
+    let mut last_end = 0;
+    for (start, _) in text_lower.match_indices(&mention_lower) {
+        result.push_str(&text[last_end..start]);
+        last_end = start + mention_lower.len();
+    }
+    result.push_str(&text[last_end..]);
+    result.trim().to_string()
+}
+
+/// Split a message into chunks respecting Telegram's 4096 character limit
+fn split_message(text: &str, max_len: usize) -> Vec<String> {
+    if text.len() <= max_len {
+        return vec![text.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for line in text.lines() {
+        if current.len() + line.len() + 1 > max_len {
+            if !current.is_empty() {
+                chunks.push(current);
+                current = String::new();
+            }
+            if line.len() > max_len {
+                let mut remaining = line;
+                while remaining.len() > max_len {
+                    chunks.push(remaining[..max_len].to_string());
+                    remaining = &remaining[max_len..];
+                }
+                if !remaining.is_empty() {
+                    current = remaining.to_string();
+                }
+            } else {
+                current = line.to_string();
+            }
+        } else {
+            if !current.is_empty() {
+                current.push('\n');
+            }
+            current.push_str(line);
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
 }
 
 /// Start a Telegram bot listener
@@ -70,22 +149,26 @@ pub async fn start_telegram_listener(
     // Create the bot
     let bot = Bot::new(&bot_token);
 
-    // Validate token by calling getMe
+    // Validate token and get bot info for mention detection
     log::info!("Telegram: Validating bot token...");
-    match bot.get_me().await {
+    let me = match bot.get_me().await {
         Ok(me) => {
             log::info!(
                 "Telegram: Bot validated - username: @{}, id: {}",
                 me.username(),
                 me.id
             );
+            me
         }
         Err(e) => {
             let error = format!("Invalid Telegram bot token: {}", e);
             log::error!("Telegram: {}", error);
             return Err(error);
         }
-    }
+    };
+
+    let bot_username = me.username().to_string();
+    let bot_user_id = me.id;
 
     // Load admin user ID setting
     let admin_user_id: Option<String> = db
@@ -114,8 +197,9 @@ pub async fn start_telegram_listener(
         &channel_name,
     ));
 
-    // Clone broadcaster for use in handler
+    // Clone for handler closure
     let broadcaster_for_handler = broadcaster.clone();
+    let bot_username_for_handler = bot_username.clone();
 
     // Create message handler
     let handler = Update::filter_message().endpoint(
@@ -123,11 +207,35 @@ pub async fn start_telegram_listener(
             let channel_id = channel_id;
             let broadcaster = broadcaster_for_handler.clone();
             let admin_user_id = admin_user_id.clone();
+            let bot_username = bot_username_for_handler.clone();
+            let bot_user_id = bot_user_id;
             async move {
                 log::info!("Telegram: Received update from chat {}", msg.chat.id);
 
                 // Only handle text messages
                 if let Some(text) = msg.text() {
+                    // In group chats, only respond if bot is @mentioned, replied to, or /command
+                    let is_private_chat = msg.chat.is_private();
+
+                    if !is_private_chat {
+                        let mentioned = is_bot_mentioned(text, &bot_username);
+                        let is_reply_to_bot = msg.reply_to_message()
+                            .and_then(|r| r.from())
+                            .map(|u| u.id == bot_user_id)
+                            .unwrap_or(false);
+                        let is_command = text.starts_with('/');
+
+                        if !mentioned && !is_reply_to_bot && !is_command {
+                            return Ok(());
+                        }
+                    }
+
+                    // Strip bot @mention from text
+                    let clean_text = strip_bot_mention(text, &bot_username);
+                    if clean_text.is_empty() {
+                        return Ok(());
+                    }
+
                     let user = msg.from();
                     let user_id = user.map(|u| u.id.to_string()).unwrap_or_default();
                     let user_name = user
@@ -142,7 +250,11 @@ pub async fn start_telegram_listener(
                         "Telegram: Message from {} ({}): {}",
                         user_name,
                         user_id,
-                        if text.len() > 50 { format!("{}...", text.chars().take(50).collect::<String>()) } else { text.to_string() }
+                        if clean_text.len() > 50 {
+                            format!("{}...", clean_text.chars().take(50).collect::<String>())
+                        } else {
+                            clean_text.clone()
+                        }
                     );
 
                     // Determine safe mode: if admin is configured, only admin gets full access
@@ -169,7 +281,7 @@ pub async fn start_telegram_listener(
                         chat_id: msg.chat.id.to_string(),
                         user_id,
                         user_name: user_name.clone(),
-                        text: text.to_string(),
+                        text: clean_text,
                         message_id: Some(msg.id.to_string()),
                         session_mode: None,
                         selected_network: None,
@@ -180,141 +292,248 @@ pub async fn start_telegram_listener(
                     let (client_id, mut event_rx) = broadcaster.subscribe();
                     log::info!("Telegram: Subscribed to events as client {}", client_id);
 
-                    // Clone bot and chat_id for the event forwarder task
+                    // Clone for event forwarder task
                     let bot_for_events = bot.clone();
                     let telegram_chat_id = msg.chat.id;
                     let channel_id_for_events = channel_id;
-                    // Convert Telegram chat ID to string for event filtering
                     let chat_id_str_for_events = telegram_chat_id.to_string();
 
                     // Spawn task to forward events to Telegram in real-time
+                    // Uses a single "status message" that gets edited (like Discord minimal mode)
                     let event_task = tokio::spawn(async move {
+                        let mut status_message_id: Option<MessageId> = None;
+
                         while let Some(event) = event_rx.recv().await {
                             // Only forward events for this specific channel AND chat session
-                            let event_channel_id = event.data.get("channel_id").and_then(|v| v.as_i64());
-                            let event_chat_id = event.data.get("chat_id").and_then(|v| v.as_str());
+                            let event_channel_id =
+                                event.data.get("channel_id").and_then(|v| v.as_i64());
+                            let event_chat_id =
+                                event.data.get("chat_id").and_then(|v| v.as_str());
 
                             match (event_channel_id, event_chat_id) {
                                 (Some(ch_id), Some(chat_id)) => {
-                                    // Both IDs present - must match both
-                                    if ch_id != channel_id_for_events || chat_id != chat_id_str_for_events {
+                                    if ch_id != channel_id_for_events
+                                        || chat_id != chat_id_str_for_events
+                                    {
                                         continue;
                                     }
                                 }
                                 (Some(ch_id), None) => {
-                                    // Only channel_id present (legacy event) - check channel only
                                     if ch_id != channel_id_for_events {
                                         continue;
                                     }
                                 }
                                 _ => {
-                                    // No channel_id - skip this event
                                     continue;
                                 }
                             }
 
                             let message_text = match event.event.as_str() {
                                 "agent.tool_call" => {
-                                    let tool_name = event.data.get("tool_name")
+                                    let tool_name = event
+                                        .data
+                                        .get("tool_name")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("unknown");
-                                    let params = event.data.get("parameters")
+                                    let params = event
+                                        .data
+                                        .get("parameters")
                                         .cloned()
                                         .unwrap_or(serde_json::json!({}));
-                                    Some(format_tool_call_for_telegram(tool_name, &params))
+                                    format_tool_call_for_telegram(
+                                        tool_name,
+                                        &params,
+                                        ToolOutputVerbosity::Minimal,
+                                    )
                                 }
                                 "tool.result" => {
-                                    let tool_name = event.data.get("tool_name")
+                                    let tool_name = event
+                                        .data
+                                        .get("tool_name")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("unknown");
-                                    let success = event.data.get("success")
+                                    let success = event
+                                        .data
+                                        .get("success")
                                         .and_then(|v| v.as_bool())
                                         .unwrap_or(false);
-                                    let duration_ms = event.data.get("duration_ms")
+                                    let duration_ms = event
+                                        .data
+                                        .get("duration_ms")
                                         .and_then(|v| v.as_i64())
                                         .unwrap_or(0);
-                                    let content = event.data.get("content")
+                                    let content = event
+                                        .data
+                                        .get("content")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
 
-                                    // say_to_user messages: always send directly — the final response
-                                    // no longer carries them (they're delivered via events only)
-                                    if tool_name == "say_to_user" && success && !content.is_empty() {
-                                        Some(content.to_string())
-                                    } else if tool_name == "say_to_user" {
+                                    // say_to_user: send as NEW message directly (not status edit)
+                                    if tool_name == "say_to_user" {
+                                        if success && !content.is_empty() {
+                                            let chunks = split_message(content, 4096);
+                                            for chunk in &chunks {
+                                                if let Err(e) = bot_for_events
+                                                    .send_message(telegram_chat_id, chunk)
+                                                    .await
+                                                {
+                                                    log::error!(
+                                                        "Telegram: Failed to send say_to_user message: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        // Don't add to status message
                                         None
                                     } else {
-                                        Some(format_tool_result_for_telegram(tool_name, success, duration_ms, content))
+                                        format_tool_result_for_telegram(
+                                            tool_name,
+                                            success,
+                                            duration_ms,
+                                            content,
+                                            ToolOutputVerbosity::Minimal,
+                                        )
                                     }
                                 }
-                                "agent.mode_change" => {
-                                    let mode = event.data.get("mode")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("unknown");
-                                    let label = event.data.get("label")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("Unknown");
-                                    let reason = event.data.get("reason")
-                                        .and_then(|v| v.as_str());
-                                    Some(format_mode_change_for_telegram(mode, label, reason))
-                                }
-                                "execution.task_started" => {
-                                    let task_type = event.data.get("type")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("task");
-                                    let name = event.data.get("name")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("Unknown task");
-                                    Some(format!("▶️ *{}:* {}", task_type, name))
-                                }
-                                "execution.task_completed" => {
-                                    let status = event.data.get("status")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("completed");
-                                    let emoji = if status == "completed" { "✅" } else { "❌" };
-                                    Some(format!("{} Task {}", emoji, status))
-                                }
+                                // Skip mode changes and task events in minimal mode
+                                "agent.mode_change"
+                                | "execution.task_started"
+                                | "execution.task_completed" => None,
                                 _ => None,
                             };
 
                             if let Some(text) = message_text {
-                                // Send as plain text for maximum reliability
-                                if let Err(e) = bot_for_events
-                                    .send_message(telegram_chat_id, &text)
-                                    .await
-                                {
-                                    log::warn!("Telegram: Failed to send event message: {}", e);
+                                let display_text = if text.len() > 4096 {
+                                    format!("{}...", &text[..4093])
+                                } else {
+                                    text
+                                };
+
+                                match status_message_id {
+                                    Some(msg_id) => {
+                                        // Edit existing status message
+                                        if let Err(e) = bot_for_events
+                                            .edit_message_text(
+                                                telegram_chat_id,
+                                                msg_id,
+                                                &display_text,
+                                            )
+                                            .await
+                                        {
+                                            log::warn!(
+                                                "Telegram: Failed to edit status message, recreating: {}",
+                                                e
+                                            );
+                                            let _ = bot_for_events
+                                                .delete_message(telegram_chat_id, msg_id)
+                                                .await;
+                                            match bot_for_events
+                                                .send_message(telegram_chat_id, &display_text)
+                                                .await
+                                            {
+                                                Ok(new_msg) => {
+                                                    status_message_id = Some(new_msg.id);
+                                                }
+                                                Err(e) => {
+                                                    log::error!(
+                                                        "Telegram: Failed to send new status message: {}",
+                                                        e
+                                                    );
+                                                    status_message_id = None;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        // First status message — create it
+                                        match bot_for_events
+                                            .send_message(telegram_chat_id, &display_text)
+                                            .await
+                                        {
+                                            Ok(sent_msg) => {
+                                                status_message_id = Some(sent_msg.id);
+                                                log::debug!(
+                                                    "Telegram: Created status message {:?}",
+                                                    sent_msg.id
+                                                );
+                                            }
+                                            Err(e) => {
+                                                log::error!(
+                                                    "Telegram: Failed to send initial status message: {}",
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
+
+                        // Return the status message ID for cleanup
+                        status_message_id
                     });
 
                     // Dispatch to AI
-                    log::info!("Telegram: Dispatching message to AI for user {}", user_name);
+                    log::info!(
+                        "Telegram: Dispatching message to AI for user {}",
+                        user_name
+                    );
                     let result = dispatcher.dispatch(normalized).await;
                     log::info!("Telegram: Dispatch complete, error={:?}", result.error);
 
-                    // Unsubscribe and stop event forwarding
+                    // Unsubscribe from events
                     broadcaster.unsubscribe(&client_id);
-                    event_task.abort();
-                    log::info!("Telegram: Unsubscribed from events, client {}", client_id);
+
+                    // Wait briefly for event task to finish, then get status message ID
+                    let status_message_id = tokio::time::timeout(
+                        std::time::Duration::from_millis(500),
+                        event_task,
+                    )
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+                    .flatten();
+
+                    // Delete the status message to keep chat clean
+                    if let Some(msg_id) = status_message_id {
+                        if let Err(e) = bot.delete_message(msg.chat.id, msg_id).await {
+                            log::warn!("Telegram: Failed to delete status message: {}", e);
+                        } else {
+                            log::debug!("Telegram: Deleted status message {:?}", msg_id);
+                        }
+                    }
+
+                    log::info!(
+                        "Telegram: Unsubscribed from events, client {}",
+                        client_id
+                    );
 
                     // Send final response
                     if result.error.is_none() && !result.response.is_empty() {
-                        if let Err(e) = bot
-                            .send_message(msg.chat.id, &result.response)
-                            .reply_to_message_id(msg.id)
-                            .await
-                        {
-                            log::error!("Failed to send Telegram message: {}", e);
+                        let chunks = split_message(&result.response, 4096);
+                        for chunk in chunks {
+                            if let Err(e) = bot
+                                .send_message(msg.chat.id, &chunk)
+                                .reply_to_message_id(msg.id)
+                                .await
+                            {
+                                log::error!("Failed to send Telegram message: {}", e);
+                            }
                         }
                     } else if let Some(error) = result.error {
-                        // Send error message
-                        let error_msg = format!("Sorry, I encountered an error: {}", error);
+                        let error_msg =
+                            format!("Sorry, I encountered an error: {}", error);
                         let _ = bot
                             .send_message(msg.chat.id, &error_msg)
                             .reply_to_message_id(msg.id)
                             .await;
+                    } else if result.response.is_empty() {
+                        // Empty response — say_to_user already delivered via events
+                        log::debug!(
+                            "Telegram: Empty final response (say_to_user likely already delivered via events) for user {}",
+                            user_name
+                        );
                     }
                 }
 
