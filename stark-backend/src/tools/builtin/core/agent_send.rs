@@ -1,4 +1,3 @@
-use crate::controllers::api_keys::ApiKeyId;
 use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
@@ -147,17 +146,13 @@ impl Tool for AgentSendTool {
 }
 
 impl AgentSendTool {
-    fn get_api_key(key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
-        context.get_api_key_by_id(key_id)
-    }
-
     async fn send_telegram(&self, params: &AgentSendParams, context: &ToolContext) -> ToolResult {
-        // Get bot token from env or context
-        let bot_token = match Self::get_api_key(ApiKeyId::TelegramBotToken, context) {
+        // Get bot token from channel settings
+        let bot_token = match context.find_channel_bot_token("telegram", "telegram_bot_token") {
             Some(token) => token,
             None => {
                 return ToolResult::error(
-                    "Telegram bot token not configured. Add TELEGRAM_BOT_TOKEN in API Keys settings."
+                    "Telegram bot token not available. Configure it in your Telegram channel settings."
                 );
             }
         };
@@ -209,12 +204,12 @@ impl AgentSendTool {
     }
 
     async fn send_discord(&self, params: &AgentSendParams, context: &ToolContext) -> ToolResult {
-        // Get bot token from env or context
-        let bot_token = match Self::get_api_key(ApiKeyId::DiscordBotToken, context) {
+        // Get bot token from channel settings
+        let bot_token = match context.find_channel_bot_token("discord", "discord_bot_token") {
             Some(token) => token,
             None => {
                 return ToolResult::error(
-                    "Discord bot token not configured. Add DISCORD_BOT_TOKEN in API Keys settings."
+                    "Discord bot token not available. Configure it in your Discord channel settings."
                 );
             }
         };
@@ -271,12 +266,12 @@ impl AgentSendTool {
     }
 
     async fn send_slack(&self, params: &AgentSendParams, context: &ToolContext) -> ToolResult {
-        // Get bot token from env or context
-        let bot_token = match Self::get_api_key(ApiKeyId::SlackBotToken, context) {
+        // Get bot token from channel settings
+        let bot_token = match context.find_channel_bot_token("slack", "slack_bot_token") {
             Some(token) => token,
             None => {
                 return ToolResult::error(
-                    "Slack bot token not configured. Add SLACK_BOT_TOKEN in API Keys settings."
+                    "Slack bot token not available. Configure it in your Slack channel settings."
                 );
             }
         };

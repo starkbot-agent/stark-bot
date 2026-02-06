@@ -6,11 +6,11 @@
 //! - Discord user profile management with public address registration
 //! - Tool for resolving Discord mentions to registered public addresses
 //!
-//! ## Query Mode for Admins
+//! ## Admin Flow
 //!
-//! By default, admins must first say "@bot query" to activate query mode.
-//! The next @mention from that admin will be treated as an agentic query.
-//! This prevents accidental agent invocations.
+//! Any `@bot <message>` from an admin is forwarded directly to the agent
+//! (no safe mode), unless it matches a short-circuit keyword like "love"
+//! or "register".
 
 pub mod commands;
 pub mod config;
@@ -19,17 +19,9 @@ pub mod tools;
 
 use rand::seq::SliceRandom;
 use serenity::all::{Context, Message, UserId};
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 pub use config::DiscordHooksConfig;
 pub use db::DiscordUserProfile;
-
-// Track which admin users are currently listening for a query
-// Key: discord_user_id, Value: true if waiting for next message to be treated as query
-lazy_static::lazy_static! {
-    static ref LISTENING_FOR_QUERY: Mutex<HashMap<String, bool>> = Mutex::new(HashMap::new());
-}
 
 /// Result of processing a Discord message
 #[derive(Debug)]
@@ -86,31 +78,9 @@ pub struct ForwardRequest {
     pub force_safe_mode: bool,
 }
 
-/// Check if a user is in "listening for query" mode
-fn is_listening_for_query(user_id: &str) -> bool {
-    LISTENING_FOR_QUERY
-        .lock()
-        .unwrap()
-        .get(user_id)
-        .copied()
-        .unwrap_or(false)
-}
-
-/// Set a user's "listening for query" state
-fn set_listening_for_query(user_id: &str, listening: bool) {
-    let mut map = LISTENING_FOR_QUERY.lock().unwrap();
-    if listening {
-        map.insert(user_id.to_string(), true);
-        log::info!("Discord hooks: Admin {} is now listening for query", user_id);
-    } else {
-        map.remove(user_id);
-        log::info!("Discord hooks: Admin {} query mode reset", user_id);
-    }
-}
-
-/// Check if the message text contains the "query" keyword (case-insensitive)
-fn contains_query_keyword(text: &str) -> bool {
-    text.to_lowercase().contains("query")
+/// Check if text contains a "love" keyword (as a standalone word boundary)
+fn has_love_keyword(text: &str) -> bool {
+    text.contains(" love ") || text.starts_with("love ") || text.ends_with(" love") || text == "love"
 }
 
 /// Check if the bot is mentioned in a message
@@ -254,92 +224,62 @@ pub async fn process(
     );
 
     if is_admin {
-        // Admin flow: implement query mode state machine
-        let is_listening = is_listening_for_query(&user_id);
+        // Admin flow: forward everything to agent unless it matches a short-circuit keyword
+        let cmd_lower = command_text.to_lowercase();
 
-        // Check for "query" keyword FIRST - this resets/activates listening mode
-        // even if they were already listening (prevents forwarding "query" as an agent query)
-        if contains_query_keyword(&command_text) {
-            // Admin said "query" - activate (or re-activate) listening mode
-            set_listening_for_query(&user_id, true);
-            Ok(ProcessResult::handled(
-                "Okay, I am ready for your query. Send your next message with @starkbot and I'll process it.".to_string(),
-            ))
-        } else if is_listening {
-            // Admin was listening for a query - this message IS the query
-            // Reset the listening state and forward to agent
-            set_listening_for_query(&user_id, false);
+        // Easter egg: "love"
+        if has_love_keyword(&cmd_lower) {
+            let responses = [
+                "I love you too.",
+                "I don't know, let me think about that.",
+                "How much do you love me?",
+            ];
+            let response = responses.choose(&mut rand::thread_rng()).unwrap_or(&responses[0]);
+            return Ok(ProcessResult::handled(response.to_string()));
+        }
+
+        // "register" command - handle directly like a regular user
+        if cmd_lower.starts_with("register") {
             log::info!(
-                "Discord hooks: Admin {} submitted query: '{}'",
-                user_name,
-                if command_text.len() > 50 {
-                    format!("{}...", &command_text[..50])
-                } else {
-                    command_text.clone()
-                }
+                "Discord hooks: Admin {} using register command",
+                user_name
             );
-            Ok(ProcessResult::forward_to_agent(ForwardRequest {
-                text: command_text,
-                user_id,
-                user_name,
-                is_admin: true,
-                force_safe_mode: false,
-            }))
-        } else {
-            // Admin mentioned bot without "query" keyword and wasn't in listening mode
-            let cmd_lower = command_text.to_lowercase();
-
-            // Check if this is a "register" command - allow admins to register like regular users
-            if cmd_lower.starts_with("register") {
-                log::info!(
-                    "Discord hooks: Admin {} using register command as regular user",
-                    user_name
-                );
-                // Fall through to regular user command handling for registration
-                match commands::parse(&command_text) {
-                    Some(cmd) => {
-                        let response = commands::execute(cmd, &user_id, db).await?;
-                        Ok(ProcessResult::handled(response))
-                    }
-                    None => {
-                        // This shouldn't happen since we checked it starts with "register",
-                        // but handle it gracefully (e.g., "register" with no address)
-                        Ok(ProcessResult::handled(
-                            "Invalid register command. Usage: `@starkbot register 0x...`".to_string(),
-                        ))
-                    }
+            match commands::parse(&command_text) {
+                Some(cmd) => {
+                    let response = commands::execute(cmd, &user_id, db).await?;
+                    return Ok(ProcessResult::handled(response));
                 }
-            } else if cmd_lower.contains(" tip ") || cmd_lower.starts_with("tip ") {
-                // Allow admins to tip without query mode - forward directly to agent
-                // Require " tip " as a word to avoid matching "multiple", "tipper", etc.
-                log::info!(
-                    "Discord hooks: Admin {} using tip command, forwarding to agent",
-                    user_name
-                );
-                Ok(ProcessResult::forward_to_agent(ForwardRequest {
-                    text: command_text,
-                    user_id,
-                    user_name,
-                    is_admin: true,
-                    force_safe_mode: false,
-                }))
-            } else {
-                // Explain how to activate query mode
-                Ok(ProcessResult::handled(
-                    "Hi! I'd be happy to help with a query. Just say the magic word **\"query\"** \
-                    (e.g., `@starkbot query`) and I'll listen for your next command.\n\n\
-                    Example:\n\
-                    1. `@starkbot query` → I'll respond that I'm ready\n\
-                    2. `@starkbot check my portfolio` → I'll process this as an agentic query".to_string(),
-                ))
+                None => {
+                    return Ok(ProcessResult::handled(
+                        "Invalid register command. Usage: `@starkbot register 0x...`".to_string(),
+                    ));
+                }
             }
         }
+
+        // Default: forward to agent (no safe mode)
+        log::info!(
+            "Discord hooks: Admin {} forwarding to agent: '{}'",
+            user_name,
+            if command_text.len() > 50 {
+                format!("{}...", &command_text[..50])
+            } else {
+                command_text.clone()
+            }
+        );
+        Ok(ProcessResult::forward_to_agent(ForwardRequest {
+            text: command_text,
+            user_id,
+            user_name,
+            is_admin: true,
+            force_safe_mode: false,
+        }))
     } else {
         // Regular user: try limited commands
         let cmd_lower = command_text.to_lowercase();
 
         // Easter egg: respond to "love" messages
-        if cmd_lower.contains(" love ") || cmd_lower.starts_with("love ") || cmd_lower.ends_with(" love") {
+        if has_love_keyword(&cmd_lower) {
             let responses = [
                 "I love you too.",
                 "I don't know, let me think about that.",
@@ -407,66 +347,17 @@ mod tests {
     }
 
     #[test]
-    fn test_contains_query_keyword() {
-        // Basic cases
-        assert!(contains_query_keyword("query"));
-        assert!(contains_query_keyword("QUERY"));
-        assert!(contains_query_keyword("Query"));
-
-        // In context
-        assert!(contains_query_keyword("hey bot, query please"));
-        assert!(contains_query_keyword("I have a query for you"));
-        assert!(contains_query_keyword("query: what is the price"));
+    fn test_has_love_keyword() {
+        // Should match
+        assert!(has_love_keyword("love you"));
+        assert!(has_love_keyword("i love you"));
+        assert!(has_love_keyword("i really love"));
+        assert!(has_love_keyword("love"));
 
         // Should not match
-        assert!(!contains_query_keyword("hello"));
-        assert!(!contains_query_keyword("tip @user 100"));
-        assert!(!contains_query_keyword("check status"));
-    }
-
-    #[test]
-    fn test_listening_for_query_state() {
-        let user_id = "test_user_123";
-
-        // Initially not listening
-        assert!(!is_listening_for_query(user_id));
-
-        // Set to listening
-        set_listening_for_query(user_id, true);
-        assert!(is_listening_for_query(user_id));
-
-        // Reset
-        set_listening_for_query(user_id, false);
-        assert!(!is_listening_for_query(user_id));
-    }
-
-    #[test]
-    fn test_multiple_users_listening_state() {
-        let user1 = "admin_1";
-        let user2 = "admin_2";
-
-        // Set user1 to listening
-        set_listening_for_query(user1, true);
-
-        // user2 should not be listening
-        assert!(is_listening_for_query(user1));
-        assert!(!is_listening_for_query(user2));
-
-        // Set user2 to listening
-        set_listening_for_query(user2, true);
-
-        // Both should be listening
-        assert!(is_listening_for_query(user1));
-        assert!(is_listening_for_query(user2));
-
-        // Reset user1
-        set_listening_for_query(user1, false);
-
-        // Only user2 should be listening
-        assert!(!is_listening_for_query(user1));
-        assert!(is_listening_for_query(user2));
-
-        // Cleanup
-        set_listening_for_query(user2, false);
+        assert!(!has_love_keyword("lovely day"));
+        assert!(!has_love_keyword("gloves are warm"));
+        assert!(!has_love_keyword("hello"));
+        assert!(!has_love_keyword("tip @user 100"));
     }
 }

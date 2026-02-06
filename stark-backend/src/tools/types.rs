@@ -471,6 +471,41 @@ impl ToolContext {
         self.get_api_key(key_id.as_str())
     }
 
+    /// Find a bot token from channel settings for a given channel type.
+    /// First checks the current channel (if it matches the type), then falls back to any channel of that type.
+    /// `setting_key` is the channel setting name (e.g. "discord_bot_token", "telegram_bot_token", "slack_bot_token").
+    pub fn find_channel_bot_token(&self, channel_type: &str, setting_key: &str) -> Option<String> {
+        let db = self.database.as_ref()?;
+
+        // If we're currently in a channel of the right type, use its token
+        if let Some(channel_id) = self.channel_id {
+            if let Ok(Some(token)) = db.get_channel_setting(channel_id, setting_key) {
+                if !token.is_empty() {
+                    return Some(token);
+                }
+            }
+        }
+
+        // Fall back: find any channel of this type and use its token
+        if let Ok(channels) = db.list_channels() {
+            for ch in channels {
+                if ch.channel_type == channel_type {
+                    if let Ok(Some(token)) = db.get_channel_setting(ch.id, setting_key) {
+                        if !token.is_empty() {
+                            return Some(token);
+                        }
+                    }
+                    // Also check legacy bot_token field
+                    if !ch.bot_token.is_empty() {
+                        return Some(ch.bot_token);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     /// Add bot config to the context (for use by tools like exec for git commits)
     pub fn with_bot_config(mut self, bot_name: String, bot_email: String) -> Self {
         self.extra.insert("bot_name".to_string(), serde_json::json!(bot_name));

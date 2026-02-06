@@ -775,23 +775,18 @@ impl MessageDispatcher {
         let _ = std::fs::create_dir_all(&workspace_dir);
 
         // Load API keys from database into ToolContext (per-session, no global env mutation)
-        // In safe mode, only load keys needed by allowed tools (discord_read/lookup)
+        // In safe mode, skip loading API keys (discord/telegram/slack tokens come from channel settings)
         let mut github_token_loaded = false;
-        if let Ok(keys) = self.db.list_api_keys() {
-            for key in keys {
-                let key_id = ApiKeyId::from_str(&key.service_name).ok();
+        if !is_safe_mode {
+            if let Ok(keys) = self.db.list_api_keys() {
+                for key in keys {
+                    let key_id = ApiKeyId::from_str(&key.service_name).ok();
 
-                if is_safe_mode {
-                    // Safe mode: only load DISCORD_BOT_TOKEN for discord_read/lookup
-                    if key_id != Some(ApiKeyId::DiscordBotToken) {
-                        continue;
+                    if key_id == Some(ApiKeyId::GithubToken) {
+                        github_token_loaded = true;
                     }
+                    tool_context = tool_context.with_api_key(&key.service_name, key.api_key.clone());
                 }
-
-                if key_id == Some(ApiKeyId::GithubToken) {
-                    github_token_loaded = true;
-                }
-                tool_context = tool_context.with_api_key(&key.service_name, key.api_key.clone());
             }
         }
 

@@ -1,4 +1,3 @@
-use crate::controllers::api_keys::ApiKeyId;
 use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
@@ -176,13 +175,9 @@ impl Tool for DiscordWriteTool {
 }
 
 impl DiscordWriteTool {
-    fn get_api_key(key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
-        context.get_api_key_by_id(key_id)
-    }
-
     fn get_bot_token(context: &ToolContext) -> Result<String, ToolResult> {
-        Self::get_api_key(ApiKeyId::DiscordBotToken, context).ok_or_else(|| {
-            ToolResult::error("Discord bot token not configured. Add DISCORD_BOT_TOKEN in API Keys settings.")
+        context.find_channel_bot_token("discord", "discord_bot_token").ok_or_else(|| {
+            ToolResult::error("Discord bot token not available. Configure it in your Discord channel settings.")
         })
     }
 
