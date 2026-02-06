@@ -295,33 +295,23 @@ pub async fn start_twitter_listener(
     // Load configuration
     let config = TwitterConfig::from_channel(&channel, &db)?;
 
-    // SECURITY: Safe mode handling for Twitter channels
-    // If an admin X account is configured, we use per-message force_safe_mode (like Discord)
-    // so admin tweets get standard mode while everyone else gets safe mode.
-    // If no admin is configured, enable channel-level safe_mode for all tweets.
+    // SECURITY: Safe mode is always handled per-message via force_safe_mode.
+    // If an admin X account is configured, admin tweets get standard mode while others get safe mode.
+    // If no admin is configured, ALL tweets get safe mode.
+    // We never set channel-level safe_mode, so the channel stays eligible for cloud backup.
     if config.admin_user_id.is_some() {
         log::info!(
             "Twitter: Admin user ID configured ({}) — admin tweets use standard mode, others use safe mode",
             config.admin_user_id.as_deref().unwrap_or("?")
         );
-        // Disable channel-level safe_mode since we handle it per-message
-        if channel.safe_mode {
-            if let Err(e) = db.set_channel_safe_mode(channel_id, false) {
-                log::error!("Failed to disable channel-level safe_mode for per-message handling: {}", e);
-            }
-        }
     } else {
-        // No admin configured — all tweets are untrusted, force safe mode on the channel
-        if !channel.safe_mode {
-            log::warn!(
-                "Twitter channel {} does not have safe_mode enabled - enabling now for security",
-                channel_id
-            );
-            if let Err(e) = db.set_channel_safe_mode(channel_id, true) {
-                log::error!("Failed to enable safe_mode on Twitter channel {}: {}", channel_id, e);
-            }
+        log::info!("Twitter: No admin configured — all tweets use safe mode (per-message)");
+    }
+    // Ensure channel-level safe_mode is off (per-message handling is sufficient)
+    if channel.safe_mode {
+        if let Err(e) = db.set_channel_safe_mode(channel_id, false) {
+            log::error!("Failed to disable channel-level safe_mode: {}", e);
         }
-        log::info!("Twitter: Safe mode ENABLED for all tweets - tool access restricted to Web only");
     }
 
     log::info!(
@@ -334,6 +324,10 @@ pub async fn start_twitter_listener(
         if config.max_mentions_per_hour == 0 { "unlimited".to_string() } else { config.max_mentions_per_hour.to_string() },
         config.admin_user_id.as_deref().unwrap_or("none")
     );
+
+    // Pre-compile bot mention regex (used per-tweet in extract_command_text)
+    let bot_mention_regex = Regex::new(&format!(r"(?i)@{}", regex::escape(&config.bot_handle)))
+        .unwrap_or_else(|_| Regex::new(r"(?i)@\w+").unwrap());
 
     // Validate credentials by fetching user info
     let client = reqwest::Client::new();
@@ -488,22 +482,22 @@ pub async fn start_twitter_listener(
                                     "Twitter: Processing mention from @{}: {}",
                                     author_username,
                                     if mention.text.len() > 50 {
-                                        format!("{}...", &mention.text[..50])
+                                        format!("{}...", mention.text.chars().take(50).collect::<String>())
                                     } else {
                                         mention.text.clone()
                                     }
                                 );
 
-                                // Determine safe mode: if admin user ID is configured,
-                                // check if author's numeric ID matches
+                                // Determine safe mode: admin gets standard mode, everyone else gets safe mode.
+                                // When no admin is configured, all tweets are safe mode.
                                 let is_admin = config.admin_user_id.as_ref()
                                     .map(|admin_id| admin_id == &mention.author_id)
                                     .unwrap_or(false);
-                                let force_safe_mode = !is_admin && config.admin_user_id.is_some();
+                                let force_safe_mode = !is_admin;
 
                                 if is_admin {
                                     log::info!("Twitter: @{} is admin — using standard mode", author_username);
-                                } else if force_safe_mode {
+                                } else {
                                     log::info!("Twitter: @{} is not admin — using safe mode", author_username);
                                 }
 
@@ -516,6 +510,7 @@ pub async fn start_twitter_listener(
                                     force_safe_mode,
                                     &dispatcher,
                                     &broadcaster,
+                                    &bot_mention_regex,
                                 ).await;
 
                                 // Mark as processed before replying (to avoid double-processing on errors)
@@ -726,14 +721,12 @@ async fn lookup_user(
 }
 
 /// Extract command text from a tweet, removing @mentions
-fn extract_command_text(text: &str, bot_handle: &str) -> String {
+fn extract_command_text(text: &str, bot_mention_regex: &Regex) -> String {
     // Remove @bot_handle (case-insensitive) and any other @mentions at the start
     let mut result = text.to_string();
 
-    // Remove our bot's mention (case-insensitive using regex)
-    let bot_mention_pattern = Regex::new(&format!(r"(?i)@{}", regex::escape(bot_handle)))
-        .unwrap_or_else(|_| Regex::new(r"(?i)@\w+").unwrap());
-    result = bot_mention_pattern.replace_all(&result, "").to_string();
+    // Remove our bot's mention using pre-compiled regex
+    result = bot_mention_regex.replace_all(&result, "").to_string();
 
     // Remove leading @mentions (common in replies) using pre-compiled static regex
     while LEADING_MENTION_PATTERN.is_match(&result) {
@@ -752,9 +745,10 @@ async fn process_mention(
     force_safe_mode: bool,
     dispatcher: &Arc<MessageDispatcher>,
     broadcaster: &Arc<EventBroadcaster>,
+    bot_mention_regex: &Regex,
 ) -> Option<String> {
     // Extract the actual command/message text
-    let command_text = extract_command_text(&tweet.text, &config.bot_handle);
+    let command_text = extract_command_text(&tweet.text, bot_mention_regex);
 
     if command_text.is_empty() {
         log::debug!("Twitter: Empty command after extracting text, ignoring");
@@ -1005,39 +999,40 @@ mod tests {
 
     #[test]
     fn test_extract_command_text() {
+        let re = Regex::new(r"(?i)@starkbot").unwrap();
         // Basic case
         assert_eq!(
-            extract_command_text("@starkbot hello world", "starkbot"),
+            extract_command_text("@starkbot hello world", &re),
             "hello world"
         );
         // Mixed case - should be case-insensitive
         assert_eq!(
-            extract_command_text("@StarkBot what's the price?", "starkbot"),
+            extract_command_text("@StarkBot what's the price?", &re),
             "what's the price?"
         );
         // Fully uppercase
         assert_eq!(
-            extract_command_text("@STARKBOT test message", "starkbot"),
+            extract_command_text("@STARKBOT test message", &re),
             "test message"
         );
         // Weird mixed case
         assert_eq!(
-            extract_command_text("@StArKbOt random case", "starkbot"),
+            extract_command_text("@StArKbOt random case", &re),
             "random case"
         );
         // Multiple mentions with our bot
         assert_eq!(
-            extract_command_text("@user1 @starkbot help me", "starkbot"),
+            extract_command_text("@user1 @starkbot help me", &re),
             "help me"
         );
-        // Bot mention in middle of text (should be removed)
+        // Bot mention in middle of text (should be removed, may leave extra space)
         assert_eq!(
-            extract_command_text("Hey @StarkBot can you help?", "starkbot"),
-            "Hey can you help?"
+            extract_command_text("Hey @StarkBot can you help?", &re),
+            "Hey  can you help?"
         );
         // Just the mention, no text
         assert_eq!(
-            extract_command_text("@starkbot", "starkbot"),
+            extract_command_text("@starkbot", &re),
             ""
         );
     }

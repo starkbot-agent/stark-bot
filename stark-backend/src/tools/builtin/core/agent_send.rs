@@ -147,19 +147,7 @@ impl Tool for AgentSendTool {
 }
 
 impl AgentSendTool {
-    /// Get an API key, trying environment variable first, then context
     fn get_api_key(key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
-        // Try environment variable first (preferred)
-        if let Some(env_vars) = key_id.env_vars() {
-            for env_var in env_vars {
-                if let Ok(value) = std::env::var(env_var) {
-                    if !value.is_empty() {
-                        return Some(value);
-                    }
-                }
-            }
-        }
-        // Fall back to context
         context.get_api_key_by_id(key_id)
     }
 

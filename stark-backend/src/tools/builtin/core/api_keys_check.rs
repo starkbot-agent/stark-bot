@@ -51,25 +51,9 @@ impl ApiKeysCheckTool {
     }
 
     fn check_key(&self, key_id: ApiKeyId, context: &ToolContext) -> bool {
-        // Check in context first
-        if let Some(key) = context.get_api_key_by_id(key_id) {
-            if !key.is_empty() {
-                return true;
-            }
-        }
-
-        // Also check environment as fallback
-        if let Some(env_vars) = key_id.env_vars() {
-            for var in env_vars {
-                if let Ok(val) = std::env::var(var) {
-                    if !val.is_empty() {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+        context.get_api_key_by_id(key_id)
+            .map(|k| !k.is_empty())
+            .unwrap_or(false)
     }
 }
 

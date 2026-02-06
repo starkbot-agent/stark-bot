@@ -118,7 +118,7 @@ pub async fn start_telegram_listener(
                         "Telegram: Message from {} ({}): {}",
                         user_name,
                         user_id,
-                        if text.len() > 50 { &text[..50] } else { text }
+                        if text.len() > 50 { format!("{}...", text.chars().take(50).collect::<String>()) } else { text.to_string() }
                     );
 
                     let normalized = NormalizedMessage {

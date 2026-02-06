@@ -777,37 +777,31 @@ impl MessageDispatcher {
         // Ensure workspace directory exists
         let _ = std::fs::create_dir_all(&workspace_dir);
 
-        // Load API keys from database for tools that need them
-        // Each key is stored individually (e.g., "GITHUB_TOKEN", "DISCORD_BOT_TOKEN")
-        // Keys are added to both ToolContext AND environment variables for maximum compatibility
+        // Load API keys from database into ToolContext (per-session, no global env mutation)
+        // In safe mode, only load keys needed by allowed tools (discord_read/lookup)
         let mut github_token_loaded = false;
         if let Ok(keys) = self.db.list_api_keys() {
             for key in keys {
-                // Add to tool context (for tools that use context.get_api_key)
-                tool_context = tool_context.with_api_key(&key.service_name, key.api_key.clone());
+                let key_id = ApiKeyId::from_str(&key.service_name).ok();
 
-                // Also set as environment variables (for tools that use std::env)
-                // Use the ApiKeyId to get all env var names for this key
-                // SAFETY: We're setting env vars at startup before spawning threads that read them
-                if let Ok(key_id) = ApiKeyId::from_str(&key.service_name) {
-                    if key_id == ApiKeyId::GithubToken {
-                        github_token_loaded = true;
-                    }
-                    if let Some(env_vars) = key_id.env_vars() {
-                        for env_var in env_vars {
-                            unsafe { std::env::set_var(env_var, &key.api_key); }
-                        }
+                if is_safe_mode {
+                    // Safe mode: only load DISCORD_BOT_TOKEN for discord_read/lookup
+                    if key_id != Some(ApiKeyId::DiscordBotToken) {
+                        continue;
                     }
                 }
+
+                if key_id == Some(ApiKeyId::GithubToken) {
+                    github_token_loaded = true;
+                }
+                tool_context = tool_context.with_api_key(&key.service_name, key.api_key.clone());
             }
         }
 
         // If GitHub token is loaded, query GitHub API to get authenticated user
-        // and set GITHUB_USER env var for use in git/gh commands
         if github_token_loaded {
             if let Ok(github_user) = self.get_github_authenticated_user().await {
                 log::info!("[DISPATCH] GitHub authenticated as: {}", github_user);
-                unsafe { std::env::set_var("GITHUB_USER", &github_user); }
                 tool_context.extra.insert(
                     "github_user".to_string(),
                     serde_json::json!(github_user),

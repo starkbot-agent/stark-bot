@@ -181,7 +181,7 @@ impl EventHandler for DiscordHandler {
                         if forward.force_safe_mode { "Safe mode query" } else { "Admin command" },
                         user_name,
                         user_id,
-                        if forward.text.len() > 50 { format!("{}...", &forward.text[..50]) } else { forward.text.clone() }
+                        if forward.text.len() > 50 { format!("{}...", forward.text.chars().take(50).collect::<String>()) } else { forward.text.clone() }
                     );
 
                     let text_with_hint = format!(
@@ -227,36 +227,6 @@ impl EventHandler for DiscordHandler {
             }
         }
         // ===== End Discord Hooks Integration =====
-
-        let user_id = msg.author.id.to_string();
-        // Discord moved away from discriminators, so just use the username
-        // If discriminator exists and is non-zero, include it for backwards compatibility
-        let user_name = match msg.author.discriminator {
-            Some(disc) => format!("{}#{}", msg.author.name, disc),
-            None => msg.author.name.clone(),
-        };
-
-        log::info!(
-            "Discord: Message from {} ({}): {}",
-            user_name,
-            user_id,
-            if text.len() > 50 { &text[..50] } else { &text }
-        );
-
-        let normalized = NormalizedMessage {
-            channel_id: self.channel_id,
-            channel_type: ChannelType::Discord.to_string(),
-            chat_id: msg.channel_id.to_string(),
-            user_id,
-            user_name: user_name.clone(),
-            text,
-            message_id: Some(msg.id.to_string()),
-            session_mode: None,
-            selected_network: None,
-            force_safe_mode: false,
-        };
-
-        self.dispatch_and_respond(&ctx, &msg, normalized, &user_name).await;
     }
 
     async fn ready(&self, _ctx: Context, ready: Ready) {
@@ -346,10 +316,6 @@ impl DiscordHandler {
                         let content = event.data.get("content")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        let is_safe_mode = event.data.get("safe_mode")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-
                         // For tools that terminate the loop, skip output here (final response handles it)
                         // For tools that don't terminate, output directly if they have user-facing content
                         if tool_name == "say_to_user" {

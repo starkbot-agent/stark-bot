@@ -192,20 +192,40 @@ struct WebFetchParams {
     body: Option<Value>,
 }
 
-/// Expand environment variables in a string (e.g., $VAR_NAME or ${VAR_NAME})
-fn expand_env_vars(s: &str) -> String {
+/// Build a lookup map from env var names to values using the ToolContext's API keys.
+/// Maps each ApiKeyId's env_vars() aliases to the stored value.
+fn build_env_var_map(context: &ToolContext) -> HashMap<String, String> {
+    use crate::controllers::api_keys::ApiKeyId;
+    let mut map = HashMap::new();
+    for key_id in ApiKeyId::iter() {
+        if let Some(value) = context.get_api_key_by_id(key_id) {
+            if !value.is_empty() {
+                if let Some(env_vars) = key_id.env_vars() {
+                    for env_var in env_vars {
+                        map.insert(env_var.to_string(), value.clone());
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Expand variable references in a string (e.g., $VAR_NAME or ${VAR_NAME})
+/// using API keys from the ToolContext rather than process environment variables.
+fn expand_context_vars(s: &str, var_map: &HashMap<String, String>) -> String {
     let mut result = s.to_string();
 
     // Handle ${VAR_NAME} format
     let re_braces = regex::Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").unwrap();
     result = re_braces.replace_all(&result, |caps: &regex::Captures| {
-        std::env::var(&caps[1]).unwrap_or_default()
+        var_map.get(&caps[1]).cloned().unwrap_or_default()
     }).to_string();
 
     // Handle $VAR_NAME format
     let re_simple = regex::Regex::new(r"\$([A-Za-z_][A-Za-z0-9_]*)").unwrap();
     result = re_simple.replace_all(&result, |caps: &regex::Captures| {
-        std::env::var(&caps[1]).unwrap_or_default()
+        var_map.get(&caps[1]).cloned().unwrap_or_default()
     }).to_string();
 
     result
@@ -217,7 +237,7 @@ impl Tool for WebFetchTool {
         self.definition.clone()
     }
 
-    async fn execute(&self, params: Value, _context: &ToolContext) -> ToolResult {
+    async fn execute(&self, params: Value, context: &ToolContext) -> ToolResult {
         let params: WebFetchParams = match serde_json::from_value(params) {
             Ok(p) => p,
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
@@ -294,9 +314,10 @@ impl Tool for WebFetchTool {
 
         // Add optional headers
         if let Some(ref headers) = params.headers {
+            let var_map = build_env_var_map(context);
             for (key, value) in headers {
-                // Expand environment variables in header values
-                let expanded_value = expand_env_vars(value);
+                // Expand context variables in header values
+                let expanded_value = expand_context_vars(value, &var_map);
                 if let Ok(header_name) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
                     if let Ok(header_value) = reqwest::header::HeaderValue::from_str(&expanded_value) {
                         request = request.header(header_name, header_value);

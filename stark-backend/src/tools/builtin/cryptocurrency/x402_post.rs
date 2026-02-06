@@ -107,27 +107,8 @@ impl X402PostTool {
         X402Signer::from_private_key(&private_key)
     }
 
-    /// Get an API credential from context, with env var fallback (like Twitter pattern)
     fn get_credential(&self, key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
-        // Try context first (from database/UI)
-        if let Some(key) = context.get_api_key_by_id(key_id) {
-            if !key.is_empty() {
-                return Some(key);
-            }
-        }
-
-        // Fallback to env vars
-        if let Some(env_vars) = key_id.env_vars() {
-            for var in env_vars {
-                if let Ok(val) = std::env::var(var) {
-                    if !val.is_empty() {
-                        return Some(val);
-                    }
-                }
-            }
-        }
-
-        None
+        context.get_api_key_by_id(key_id).filter(|k| !k.is_empty())
     }
 
     /// Check if URL is an x402book endpoint

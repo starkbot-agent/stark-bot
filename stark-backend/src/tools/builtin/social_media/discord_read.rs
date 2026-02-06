@@ -278,15 +278,6 @@ impl Tool for DiscordReadTool {
 
 impl DiscordReadTool {
     fn get_api_key(key_id: ApiKeyId, context: &ToolContext) -> Option<String> {
-        if let Some(env_vars) = key_id.env_vars() {
-            for env_var in env_vars {
-                if let Ok(value) = std::env::var(env_var) {
-                    if !value.is_empty() {
-                        return Some(value);
-                    }
-                }
-            }
-        }
         context.get_api_key_by_id(key_id)
     }
 

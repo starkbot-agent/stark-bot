@@ -38,6 +38,10 @@ function getChannelHints(channelType: string): string[] {
         'Set your 4 OAuth 1.0a keys (Consumer Key, Consumer Secret, Access Token, Access Token Secret) on the API Keys page.',
         'Configure the Bot Handle (e.g. "starkbot") and Bot User ID (numeric) in channel settings after creation.',
       ];
+    case 'telegram':
+      return [
+        '<strong>Warning: Telegram channels have no safe mode.</strong> Any user who messages this bot gets full unrestricted agent access (all tools, exec, transactions). Only use Telegram for private bots where you trust all users.',
+      ];
     default:
       return [];
   }

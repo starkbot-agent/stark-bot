@@ -54,20 +54,14 @@ impl Tool for GithubUserTool {
             }
         }
 
-        // Check for GitHub token FIRST - fail fast with helpful error
+        // Check for GitHub token - fail fast with helpful error
         let token = match context.get_api_key_by_id(ApiKeyId::GithubToken) {
             Some(t) if !t.is_empty() => t,
             _ => {
-                // Also check environment as fallback
-                match std::env::var("GH_TOKEN").or_else(|_| std::env::var("GITHUB_TOKEN")) {
-                    Ok(t) if !t.is_empty() => t,
-                    _ => {
-                        return ToolResult::error(
-                            "No GitHub token configured. Please add your GitHub Personal Access Token in Settings > API Keys (GITHUB_TOKEN). \
-                             You can create one at https://github.com/settings/tokens with 'repo' scope."
-                        );
-                    }
-                }
+                return ToolResult::error(
+                    "No GitHub token configured. Please add your GitHub Personal Access Token in Settings > API Keys (GITHUB_TOKEN). \
+                     You can create one at https://github.com/settings/tokens with 'repo' scope."
+                );
             }
         };
 
