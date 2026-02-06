@@ -337,9 +337,11 @@ pub async fn start_telegram_listener(
 
                     // Strip bot @mention from text
                     let clean_text = strip_bot_mention(text, &bot_username);
-                    if clean_text.is_empty() {
-                        return Ok(());
-                    }
+                    let clean_text = if clean_text.is_empty() {
+                        "hello".to_string()
+                    } else {
+                        clean_text
+                    };
 
                     let user = msg.from();
                     let user_id = user.map(|u| u.id.to_string()).unwrap_or_default();
