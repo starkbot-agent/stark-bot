@@ -25,12 +25,9 @@ pub struct Eip8004Config {
 
 impl Eip8004Config {
     /// Base Mainnet configuration
-    ///
-    /// Note: Contract addresses are placeholders until official deployment
     pub fn base_mainnet() -> Self {
         Self {
-            // TODO: Replace with actual deployed addresses
-            identity_registry: "0x0000000000000000000000000000000000000000".to_string(),
+            identity_registry: "0xa23a42D266653846e05d8f356a52298844537472".to_string(),
             reputation_registry: "0x0000000000000000000000000000000000000000".to_string(),
             validation_registry: None,
             chain_id: 8453,

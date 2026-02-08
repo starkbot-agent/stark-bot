@@ -870,27 +870,17 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
         }
     }
 
-    // Get on-chain agent identity registration (NFT token ID, tx hash, etc.)
+    // Get on-chain agent identity registration (NFT token ID + registry + chain)
     {
         let conn = state.db.conn();
         if let Ok(mut stmt) = conn.prepare(
-            "SELECT agent_id, agent_registry, chain_id, registration_uri, registration_hash, \
-             wallet_address, owner_address, name, description, is_active, tx_hash \
-             FROM agent_identity LIMIT 1",
+            "SELECT agent_id, agent_registry, chain_id FROM agent_identity LIMIT 1",
         ) {
             if let Ok(Some(entry)) = stmt.query_row([], |row| {
                 Ok(Some(AgentIdentityEntry {
                     agent_id: row.get(0)?,
                     agent_registry: row.get(1)?,
                     chain_id: row.get(2)?,
-                    registration_uri: row.get(3)?,
-                    registration_hash: row.get(4)?,
-                    wallet_address: row.get(5)?,
-                    owner_address: row.get(6)?,
-                    name: row.get(7)?,
-                    description: row.get(8)?,
-                    is_active: row.get::<_, i32>(9)? == 1,
-                    tx_hash: row.get(10)?,
                 }))
             }) {
                 log::info!(
@@ -1673,22 +1663,9 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             .unwrap_or(0);
         if existing == 0 {
             match conn.execute(
-                "INSERT INTO agent_identity (agent_id, agent_registry, chain_id, registration_uri, \
-                 registration_hash, wallet_address, owner_address, name, description, is_active, tx_hash) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                rusqlite::params![
-                    ai.agent_id,
-                    ai.agent_registry,
-                    ai.chain_id,
-                    ai.registration_uri,
-                    ai.registration_hash,
-                    ai.wallet_address,
-                    ai.owner_address,
-                    ai.name,
-                    ai.description,
-                    if ai.is_active { 1 } else { 0 },
-                    ai.tx_hash,
-                ],
+                "INSERT INTO agent_identity (agent_id, agent_registry, chain_id) \
+                 VALUES (?1, ?2, ?3)",
+                rusqlite::params![ai.agent_id, ai.agent_registry, ai.chain_id],
             ) {
                 Ok(_) => {
                     log::info!(

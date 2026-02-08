@@ -820,23 +820,15 @@ impl Database {
             [],
         )?;
 
-        // Agent identity (our EIP-8004 registration)
+        // Agent identity (our EIP-8004 registration — minimal: just the NFT ID + registry + chain)
+        // Everything else (name, description, URI, wallet, etc.) is fetched dynamically from chain.
         conn.execute(
             "CREATE TABLE IF NOT EXISTS agent_identity (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 agent_id INTEGER NOT NULL,
                 agent_registry TEXT NOT NULL,
                 chain_id INTEGER NOT NULL DEFAULT 8453,
-                registration_uri TEXT,
-                registration_hash TEXT,
-                wallet_address TEXT NOT NULL,
-                owner_address TEXT,
-                name TEXT,
-                description TEXT,
-                is_active INTEGER NOT NULL DEFAULT 1,
-                tx_hash TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )",
             [],
         )?;

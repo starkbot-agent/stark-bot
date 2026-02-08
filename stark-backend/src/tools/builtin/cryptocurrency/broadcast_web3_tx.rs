@@ -471,7 +471,7 @@ impl BroadcastWeb3TxTool {
             agent_id, owner, agent_uri
         );
 
-        // Persist to agent_identity table
+        // Persist to agent_identity table (minimal: just NFT ID + registry + chain)
         if let Some(db) = &context.database {
             let config = crate::eip8004::config::Eip8004Config::from_env();
             let agent_registry = config.agent_registry_string();
@@ -480,26 +480,9 @@ impl BroadcastWeb3TxTool {
             // Upsert: clear existing rows first (one identity per agent)
             let _ = conn.execute("DELETE FROM agent_identity", []);
 
-            let name = context.registers.get("agent_name")
-                .and_then(|v| v.as_str().map(|s| s.to_string()));
-            let description = context.registers.get("agent_description")
-                .and_then(|v| v.as_str().map(|s| s.to_string()));
-
             match conn.execute(
-                "INSERT INTO agent_identity (agent_id, agent_registry, chain_id, registration_uri, \
-                 wallet_address, owner_address, name, description, is_active, tx_hash) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9)",
-                rusqlite::params![
-                    agent_id as i64,
-                    agent_registry,
-                    config.chain_id as i64,
-                    agent_uri,
-                    owner,
-                    owner,
-                    name,
-                    description,
-                    tx_hash_str,
-                ],
+                "INSERT INTO agent_identity (agent_id, agent_registry, chain_id) VALUES (?1, ?2, ?3)",
+                rusqlite::params![agent_id as i64, agent_registry, config.chain_id as i64],
             ) {
                 Ok(_) => {
                     log::info!(

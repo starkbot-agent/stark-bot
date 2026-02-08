@@ -13,6 +13,7 @@ import {
 import Card, { CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
+import AnimatedLicense from '@/components/AnimatedLicense';
 
 type Tab = 'identity' | 'reputation' | 'discovery' | 'config';
 
@@ -33,9 +34,13 @@ interface AgentIdentity {
   chain_id: number;
   registration_uri: string | null;
   wallet_address: string;
+  owner_address: string;
   name: string | null;
+  description: string | null;
+  image: string | null;
   is_active: boolean;
-  created_at: string;
+  x402_support: boolean;
+  services: { name: string; endpoint: string; version: string }[];
 }
 
 interface IdentityResponse {
@@ -159,54 +164,116 @@ export default function EIP8004() {
                     <CheckCircle className="w-6 h-6 text-green-400" />
                     <div>
                       <p className="text-green-400 font-medium">Registered Agent</p>
-                      <p className="text-slate-400 text-sm">Agent ID: {identity.agent_id}</p>
+                      <p className="text-slate-400 text-sm">Agent #{identity.agent_id} on {identity.chain_id === 8453 ? 'Base' : `Chain ${identity.chain_id}`}</p>
+                    </div>
+                    <div className="ml-auto flex gap-2">
+                      {identity.x402_support && (
+                        <span className="px-2 py-0.5 bg-stark-500/20 text-stark-400 rounded text-xs">x402</span>
+                      )}
+                      <span className={`px-2 py-0.5 rounded text-xs ${identity.is_active ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {identity.is_active ? 'Active' : 'Inactive'}
+                      </span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 bg-slate-700/50 rounded-lg">
                       <p className="text-slate-400 text-sm mb-1">Name</p>
-                      <p className="text-white font-medium">{identity.name ?? 'Unnamed'}</p>
+                      <p className="text-white font-medium text-lg">{identity.name ?? 'Loading...'}</p>
                     </div>
                     <div className="p-4 bg-slate-700/50 rounded-lg">
-                      <p className="text-slate-400 text-sm mb-1">Chain</p>
-                      <p className="text-white font-medium">Chain ID: {identity.chain_id}</p>
-                    </div>
-                    <div className="p-4 bg-slate-700/50 rounded-lg">
-                      <p className="text-slate-400 text-sm mb-1">Wallet Address</p>
+                      <p className="text-slate-400 text-sm mb-1">Owner</p>
                       <div className="flex items-center gap-2">
-                        <p className="text-white font-mono text-sm">{shortenAddress(identity.wallet_address)}</p>
+                        <p className="text-white font-mono text-sm">{identity.owner_address ? shortenAddress(identity.owner_address) : '...'}</p>
+                        {identity.owner_address && (
+                          <button
+                            onClick={() => copyToClipboard(identity.owner_address, 'owner')}
+                            className="text-slate-400 hover:text-white"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                        )}
+                        {copied === 'owner' && <span className="text-green-400 text-xs">Copied!</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {identity.description && (
+                    <div className="p-4 bg-slate-700/50 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Description</p>
+                      <p className="text-white">{identity.description}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {identity.wallet_address && (
+                      <div className="p-4 bg-slate-700/50 rounded-lg">
+                        <p className="text-slate-400 text-sm mb-1">Wallet Address</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-white font-mono text-sm">{shortenAddress(identity.wallet_address)}</p>
+                          <button
+                            onClick={() => copyToClipboard(identity.wallet_address, 'wallet')}
+                            className="text-slate-400 hover:text-white"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                          {copied === 'wallet' && <span className="text-green-400 text-xs">Copied!</span>}
+                        </div>
+                      </div>
+                    )}
+                    <div className="p-4 bg-slate-700/50 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-1">Registry</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-white font-mono text-sm">{shortenAddress(identity.agent_registry)}</p>
                         <button
-                          onClick={() => copyToClipboard(identity.wallet_address, 'wallet')}
+                          onClick={() => copyToClipboard(identity.agent_registry, 'registry')}
                           className="text-slate-400 hover:text-white"
                         >
                           <Copy className="w-4 h-4" />
                         </button>
-                        {copied === 'wallet' && <span className="text-green-400 text-xs">Copied!</span>}
+                        {copied === 'registry' && <span className="text-green-400 text-xs">Copied!</span>}
                       </div>
-                    </div>
-                    <div className="p-4 bg-slate-700/50 rounded-lg">
-                      <p className="text-slate-400 text-sm mb-1">Status</p>
-                      <p className={`font-medium ${identity.is_active ? 'text-green-400' : 'text-red-400'}`}>
-                        {identity.is_active ? 'Active' : 'Inactive'}
-                      </p>
                     </div>
                   </div>
 
+                  {identity.services && identity.services.length > 0 && (
+                    <div className="p-4 bg-slate-700/50 rounded-lg">
+                      <p className="text-slate-400 text-sm mb-2">Services</p>
+                      <div className="space-y-2">
+                        {identity.services.map((svc, i) => (
+                          <div key={i} className="flex items-center gap-3 text-sm">
+                            <span className="px-2 py-0.5 bg-slate-600 text-white rounded text-xs font-mono">{svc.name}</span>
+                            <span className="text-slate-400 font-mono text-xs truncate">{svc.endpoint}</span>
+                            <span className="text-slate-500 text-xs">v{svc.version}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {identity.registration_uri && (
                     <div className="p-4 bg-slate-700/50 rounded-lg">
-                      <p className="text-slate-400 text-sm mb-1">Registration URI</p>
+                      <p className="text-slate-400 text-sm mb-1">Metadata URI</p>
                       <a
-                        href={identity.registration_uri}
+                        href={identity.registration_uri.startsWith('http') ? identity.registration_uri : `https://${identity.registration_uri}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-stark-400 hover:text-stark-300 flex items-center gap-1"
+                        className="text-stark-400 hover:text-stark-300 flex items-center gap-1 text-sm"
                       >
                         {identity.registration_uri}
                         <ExternalLink className="w-4 h-4" />
                       </a>
                     </div>
                   )}
+
+                  {/* Animated License Card */}
+                  <AnimatedLicense
+                    agentId={identity.agent_id}
+                    walletAddress={identity.owner_address || identity.wallet_address || ''}
+                    isActive={identity.is_active}
+                    name={identity.name}
+                    chainId={identity.chain_id}
+                  />
                 </div>
               ) : (
                 <div className="space-y-4">

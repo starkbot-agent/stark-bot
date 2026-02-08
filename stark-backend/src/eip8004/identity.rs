@@ -11,6 +11,14 @@ use ethers::types::Address;
 use std::str::FromStr;
 use std::sync::Arc;
 
+/// Free public RPC URL for read-only eth_call (no x402 payment needed)
+fn free_base_rpc_url(chain_id: u64) -> String {
+    match chain_id {
+        84532 => "https://sepolia.base.org".to_string(),
+        _ => "https://mainnet.base.org".to_string(),
+    }
+}
+
 /// Identity Registry client
 pub struct IdentityRegistry {
     config: Eip8004Config,
@@ -42,19 +50,21 @@ impl IdentityRegistry {
         }
     }
 
-    /// Get or create RPC client
-    fn get_rpc(&self) -> Result<X402EvmRpc, String> {
+    /// Get a free (non-x402) RPC client for read-only eth_call operations
+    fn get_free_rpc(&self) -> Result<X402EvmRpc, String> {
         let network = if self.config.chain_id == 1 { "mainnet" } else { "base" };
+        let free_rpc = Some(free_base_rpc_url(self.config.chain_id));
 
-        // Prefer wallet provider (works in both Standard and Flash/Privy mode)
         if let Some(ref wp) = self.wallet_provider {
-            return X402EvmRpc::new_with_wallet_provider(wp.clone(), network, None, true);
+            return X402EvmRpc::new_with_wallet_provider(wp.clone(), network, free_rpc, false);
         }
 
-        // Fall back to raw private key (Standard mode only)
         let private_key = crate::config::burner_wallet_private_key()
             .ok_or("BURNER_WALLET_BOT_PRIVATE_KEY not set")?;
-        X402EvmRpc::new(&private_key, network)
+        let wp: Arc<dyn WalletProvider> = Arc::new(
+            crate::wallet::EnvWalletProvider::from_private_key(&private_key)?
+        );
+        X402EvmRpc::new_with_wallet_provider(wp, network, free_rpc, false)
     }
 
     /// Get the registry contract address
@@ -84,7 +94,7 @@ impl IdentityRegistry {
             return Err("Identity Registry not deployed".to_string());
         }
 
-        let rpc = self.get_rpc()?;
+        let rpc = self.get_free_rpc()?;
         let registry_addr = self.parse_registry_address()?;
         let calldata = encode_total_supply();
 
@@ -99,7 +109,7 @@ impl IdentityRegistry {
             return Err("Identity Registry not deployed".to_string());
         }
 
-        let rpc = self.get_rpc()?;
+        let rpc = self.get_free_rpc()?;
         let registry_addr = self.parse_registry_address()?;
         let calldata = encode_token_uri(agent_id);
 
@@ -114,7 +124,7 @@ impl IdentityRegistry {
             return Err("Identity Registry not deployed".to_string());
         }
 
-        let rpc = self.get_rpc()?;
+        let rpc = self.get_free_rpc()?;
         let registry_addr = self.parse_registry_address()?;
         let calldata = encode_owner_of(agent_id);
 
@@ -129,7 +139,7 @@ impl IdentityRegistry {
             return Err("Identity Registry not deployed".to_string());
         }
 
-        let rpc = self.get_rpc()?;
+        let rpc = self.get_free_rpc()?;
         let registry_addr = self.parse_registry_address()?;
         let calldata = encode_get_agent_wallet(agent_id);
 
@@ -225,6 +235,8 @@ impl IdentityRegistry {
         } else if uri.starts_with("ar://") {
             let tx_id = uri.trim_start_matches("ar://");
             format!("https://arweave.net/{}", tx_id)
+        } else if !uri.starts_with("http://") && !uri.starts_with("https://") {
+            format!("https://{}", uri)
         } else {
             uri.to_string()
         }

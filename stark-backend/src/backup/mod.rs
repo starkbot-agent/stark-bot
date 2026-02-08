@@ -294,21 +294,13 @@ pub struct AgentSettingsEntry {
     pub secret_key: Option<String>,
 }
 
-/// On-chain agent identity registration entry in backup
+/// On-chain agent identity registration entry in backup (minimal — everything else fetched from chain)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AgentIdentityEntry {
     pub agent_id: i64,
     pub agent_registry: String,
     pub chain_id: i64,
-    pub registration_uri: Option<String>,
-    pub registration_hash: Option<String>,
-    pub wallet_address: String,
-    pub owner_address: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub is_active: bool,
-    pub tx_hash: Option<String>,
 }
 
 /// Options for what to include in a backup

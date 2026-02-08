@@ -266,28 +266,15 @@ impl Tool for IdentityPostRegisterTool {
 
         let conn = db.conn();
 
-        // Read name/description from the agent_uri register or IDENTITY.json
-        let name = context.registers.get("agent_name")
-            .and_then(|v| v.as_str().map(|s| s.to_string()));
-        let description = context.registers.get("agent_description")
-            .and_then(|v| v.as_str().map(|s| s.to_string()));
-
         // Upsert: delete any existing rows first (only one identity per agent)
         let _ = conn.execute("DELETE FROM agent_identity", []);
 
         let insert_result = conn.execute(
-            "INSERT INTO agent_identity (agent_id, agent_registry, chain_id, registration_uri, wallet_address, owner_address, name, description, is_active, tx_hash)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9)",
+            "INSERT INTO agent_identity (agent_id, agent_registry, chain_id) VALUES (?1, ?2, ?3)",
             rusqlite::params![
                 registered.agent_id as i64,
                 agent_registry,
                 config.chain_id as i64,
-                registered.agent_uri,
-                registered.owner,
-                registered.owner,
-                name,
-                description,
-                tx_hash_str,
             ],
         );
 
