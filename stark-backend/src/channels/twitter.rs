@@ -1056,7 +1056,13 @@ async fn process_mention(
         log::info!("Twitter: Using say_to_user message ({} chars, {} total captured)", last.len(), captured.len());
         Some(last)
     } else if let Some(error) = result.error {
-        Some(format!("Sorry, I encountered an error: {}", error))
+        // Never tweet internal errors (loop detection, AI failures, etc.)
+        log::warn!(
+            "Twitter: Suppressing error response for @{}: {}",
+            author_username,
+            error
+        );
+        None
     } else if !result.response.is_empty() {
         // Fallback to dispatch response (e.g. simple text replies without say_to_user)
         log::info!("Twitter: No say_to_user captured, falling back to dispatch response");

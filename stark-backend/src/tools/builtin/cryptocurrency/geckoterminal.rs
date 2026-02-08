@@ -223,14 +223,6 @@ fn format_pool_output(pool: &PoolData, output_type: ChannelOutputType, network_f
     );
     lines.push(format!("  {}", page_url));
 
-    // Chart embed marker (web only)
-    if output_type == ChannelOutputType::RichHtml {
-        let embed_url = format!(
-            "https://www.geckoterminal.com/{}/pools/{}?embed=1&info=0&swaps=0",
-            network_id, address
-        );
-        lines.push(format!("[chart:{}]", embed_url));
-    }
 
     Some(lines.join("\n"))
 }
@@ -343,7 +335,6 @@ mod tests {
         assert!(output.contains("24h Vol:"));
         assert!(output.contains("FDV:"));
         assert!(output.contains("https://www.geckoterminal.com/base/pools/0xabc123"));
-        assert!(output.contains("[chart:https://www.geckoterminal.com/base/pools/0xabc123?embed=1&info=0&swaps=0]"));
     }
 
     #[test]
@@ -353,7 +344,6 @@ mod tests {
 
         assert!(output.contains("**PEPE / WETH** on base"));
         assert!(output.contains("https://www.geckoterminal.com/base/pools/0xabc123"));
-        assert!(!output.contains("[chart:"));
     }
 
     #[test]

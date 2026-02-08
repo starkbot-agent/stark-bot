@@ -232,7 +232,8 @@ pub fn get_service_configs() -> Vec<ServiceConfig> {
     ]
 }
 
-/// Get all valid key names
+/// Get all valid key names (known service keys)
+#[allow(dead_code)]
 pub fn get_valid_key_names() -> Vec<&'static str> {
     ApiKeyId::all().iter().map(|k| k.as_str()).collect()
 }
@@ -506,16 +507,27 @@ async fn upsert_api_key(
         return resp;
     }
 
-    // Validate key name
-    let valid_keys = get_valid_key_names();
-    if !valid_keys.contains(&body.key_name.as_str()) {
+    // Validate key name: non-empty, uppercase alphanumeric + underscores, max 64 chars
+    let key_name = body.key_name.trim();
+    if key_name.is_empty() {
         return HttpResponse::BadRequest().json(ApiKeyOperationResponse {
             success: false,
             key: None,
-            error: Some(format!(
-                "Invalid key name. Valid options: {}",
-                valid_keys.join(", ")
-            )),
+            error: Some("Key name cannot be empty".to_string()),
+        });
+    }
+    if key_name.len() > 64 {
+        return HttpResponse::BadRequest().json(ApiKeyOperationResponse {
+            success: false,
+            key: None,
+            error: Some("Key name must be 64 characters or fewer".to_string()),
+        });
+    }
+    if !key_name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
+        return HttpResponse::BadRequest().json(ApiKeyOperationResponse {
+            success: false,
+            key: None,
+            error: Some("Key name must contain only uppercase letters, digits, and underscores".to_string()),
         });
     }
 
@@ -1287,12 +1299,10 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
     // Restore API keys
     let mut restored_keys = 0;
     for key in &backup_data.api_keys {
-        if get_valid_key_names().contains(&key.key_name.as_str()) {
-            if let Err(e) = state.db.upsert_api_key(&key.key_name, &key.key_value) {
-                log::error!("Failed to restore key {}: {}", key.key_name, e);
-            } else {
-                restored_keys += 1;
-            }
+        if let Err(e) = state.db.upsert_api_key(&key.key_name, &key.key_value) {
+            log::error!("Failed to restore key {}: {}", key.key_name, e);
+        } else {
+            restored_keys += 1;
         }
     }
 
@@ -1415,6 +1425,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             Some(settings.rogue_mode_enabled),
             settings.safe_mode_max_queries_per_10min,
             None, // Don't restore keystore_url - it's infrastructure config
+            None,
         ) {
             log::warn!("Failed to restore bot settings: {}", e);
         }
@@ -1958,14 +1969,12 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
     };
 
     // Try to parse as new BackupData format first, fall back to legacy Vec<BackupKey>
-    let valid_keys = get_valid_key_names();
 
     // Try new format first
     if let Ok(backup_data) = serde_json::from_str::<BackupData>(&decrypted_json) {
         let previews: Vec<CloudKeyPreview> = backup_data
             .api_keys
             .iter()
-            .filter(|k| valid_keys.contains(&k.key_name.as_str()))
             .map(|k| CloudKeyPreview {
                 key_name: k.key_name.clone(),
                 key_preview: create_key_preview(&k.key_value),
@@ -2023,10 +2032,9 @@ async fn preview_cloud_keys(state: web::Data<AppState>, req: HttpRequest) -> imp
         }
     };
 
-    // Convert to previews (only valid key names, with masked values)
+    // Convert to previews (with masked values)
     let previews: Vec<CloudKeyPreview> = cloud_keys
         .iter()
-        .filter(|k| valid_keys.contains(&k.key_name.as_str()))
         .map(|k| CloudKeyPreview {
             key_name: k.key_name.clone(),
             key_preview: create_key_preview(&k.key_value),

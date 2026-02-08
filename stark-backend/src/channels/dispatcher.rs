@@ -583,9 +583,10 @@ impl MessageDispatcher {
         log::debug!("[DISPATCH] System prompt:\n{}", system_prompt);
 
         // Build context with cross-session memory integration
+        let memory_identity: Option<&str> = if is_safe_mode { Some("safemode") } else { Some(&identity.identity_id) };
         let (history, context_summary) = self.context_manager.build_context_with_memories(
             session.id,
-            Some(&identity.identity_id),
+            memory_identity,
             20,
         );
 
@@ -902,7 +903,7 @@ impl MessageDispatcher {
                         if let Err(e) = self.context_manager.compact_incremental(
                             session.id,
                             &client,
-                            Some(&identity.identity_id),
+                            memory_identity,
                         ).await {
                             log::error!("[COMPACTION] Incremental compaction failed: {}", e);
                             // Fall back to full compaction if incremental fails
@@ -918,7 +919,7 @@ impl MessageDispatcher {
                                 if let Err(e) = self.context_manager.compact_session(
                                     session.id,
                                     &client,
-                                    Some(&identity.identity_id),
+                                    memory_identity,
                                 ).await {
                                     log::error!("[COMPACTION] Full compaction also failed: {}", e);
                                 }
@@ -937,7 +938,7 @@ impl MessageDispatcher {
                         if let Err(e) = self.context_manager.compact_session(
                             session.id,
                             &client,
-                            Some(&identity.identity_id),
+                            memory_identity,
                         ).await {
                             log::error!("[COMPACTION] Failed to compact session: {}", e);
                         }
@@ -1354,6 +1355,33 @@ impl MessageDispatcher {
         ));
     }
 
+    /// Save a memory entry when a chat session completes successfully.
+    fn save_session_completion_memory(
+        &self,
+        user_input: &str,
+        bot_response: &str,
+        is_safe_mode: bool,
+    ) {
+        let enabled = self.db.get_bot_settings()
+            .map(|s| s.chat_session_memory_generation)
+            .unwrap_or(true);
+        if !enabled { return; }
+
+        if bot_response.is_empty() { return; }
+
+        if let Some(ref store) = self.memory_store {
+            let identity_id = if is_safe_mode { Some("safemode") } else { None };
+            let entry = format!(
+                "\n### Session completed\n**User:** {}\n**Response:** {}\n",
+                user_input.chars().take(500).collect::<String>(),
+                bot_response.chars().take(1000).collect::<String>(),
+            );
+            if let Err(e) = store.append_daily_log(&entry, identity_id) {
+                log::error!("[SESSION_MEMORY] Failed to append daily log: {}", e);
+            }
+        }
+    }
+
     /// Try to advance to the next task in the queue.
     /// If a next task exists, marks it as in_progress and broadcasts updates.
     /// If no tasks remain, marks the session as complete in the database and broadcasts completion.
@@ -1440,6 +1468,7 @@ impl MessageDispatcher {
         let mut waiting_for_user_response = false;
         let mut user_question_content = String::new();
         let mut was_cancelled = false;
+        let mut last_say_to_user_content = String::new();
 
         // Loop detection: track recent tool call signatures to detect repetitive behavior
         let mut recent_call_signatures: Vec<String> = Vec::new();
@@ -1924,11 +1953,11 @@ impl MessageDispatcher {
 
                 // Give the AI one more chance to correct, then break
                 if iterations > max_tool_iterations / 2 {
-                    log::error!("[LOOP_DETECTION] Loop persists after warning, breaking out");
-                    return Ok(format!(
-                        "I got stuck in a loop calling the same tools repeatedly. Last attempt: {}",
+                    log::error!(
+                        "[LOOP_DETECTION] Loop persists after warning, breaking out. Last attempt: {}",
                         current_signatures.join(", ")
-                    ));
+                    );
+                    return Err("Sorry, I wasn't able to complete this request. Please try again.".to_string());
                 }
                 continue;
             }
@@ -2307,6 +2336,11 @@ impl MessageDispatcher {
 
                                 log::info!("[ORCHESTRATED_LOOP] task_fully_completed called");
 
+                                // Capture summary for session memory if say_to_user wasn't called
+                                if last_say_to_user_content.is_empty() {
+                                    last_say_to_user_content = summary.clone();
+                                }
+
                                 // Mark current task as completed and broadcast (if task queue exists)
                                 if let Some(completed_task_id) = orchestrator.complete_current_task() {
                                     log::info!("[ORCHESTRATED_LOOP] Task {} completed", completed_task_id);
@@ -2329,6 +2363,11 @@ impl MessageDispatcher {
                                     final_summary = summary.clone();
                                 }
                             }
+                        }
+
+                        // Capture say_to_user content for session memory
+                        if call.name == "say_to_user" && result.success {
+                            last_say_to_user_content = result.content.clone();
                         }
 
                         // say_to_user with finished_task=true completes the current task.
@@ -2504,6 +2543,11 @@ impl MessageDispatcher {
                 log::error!("[ORCHESTRATED_LOOP] Failed to update session completion status: {}", e);
             }
             self.broadcast_session_complete(original_message.channel_id, session_id);
+            self.save_session_completion_memory(
+                &original_message.text,
+                &last_say_to_user_content,
+                is_safe_mode,
+            );
         }
         // Note: If waiting_for_user_response, session stays Active (correct behavior)
         // Note: If max iterations hit without completion, session stays Active for potential retry
@@ -2627,6 +2671,7 @@ impl MessageDispatcher {
         let mut waiting_for_user_response = false;
         let mut user_question_content = String::new();
         let mut was_cancelled = false;
+        let mut last_say_to_user_content = String::new();
 
         // Loop detection: track recent tool call signatures to detect repetitive behavior
         let mut recent_call_signatures: Vec<String> = Vec::new();
@@ -2800,11 +2845,11 @@ impl MessageDispatcher {
 
                             // Give the AI one more chance to correct, then break
                             if iterations > max_tool_iterations / 2 {
-                                log::error!("[TEXT_LOOP_DETECTION] Loop persists after warning, breaking out");
-                                return Ok(format!(
-                                    "I got stuck in a loop calling `{}` repeatedly. Please rephrase your request.",
+                                log::error!(
+                                    "[TEXT_LOOP_DETECTION] Loop persists after warning, breaking out. Tool: {}",
                                     tool_call.tool_name
-                                ));
+                                );
+                                return Err("Sorry, I wasn't able to complete this request. Please try again.".to_string());
                             }
                             continue;
                         }
@@ -3112,8 +3157,17 @@ impl MessageDispatcher {
                                         } else {
                                             final_response = result.content.clone();
                                         }
+                                        // Capture summary for session memory if say_to_user wasn't called
+                                        if last_say_to_user_content.is_empty() {
+                                            last_say_to_user_content = final_response.clone();
+                                        }
                                         log::info!("[TEXT_ORCHESTRATED] Task fully completed signal received");
                                     }
+                                }
+
+                                // Capture say_to_user content for session memory
+                                if tool_call.tool_name == "say_to_user" && result.success {
+                                    last_say_to_user_content = result.content.clone();
                                 }
 
                                 // say_to_user with finished_task=true completes the current task.
@@ -3353,6 +3407,11 @@ impl MessageDispatcher {
                 log::error!("[TEXT_ORCHESTRATED] Failed to update session completion status: {}", e);
             }
             self.broadcast_session_complete(original_message.channel_id, session_id);
+            self.save_session_completion_memory(
+                &original_message.text,
+                &last_say_to_user_content,
+                is_safe_mode,
+            );
         }
         // Note: If waiting_for_user_response, session stays Active (correct behavior)
         // Note: If max iterations hit without completion, session stays Active for potential retry

@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle, Copy, Check, Wallet } from 'lucide-react';
+import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle, Copy, Check, Wallet, Brain } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -27,6 +27,7 @@ export default function BotSettings() {
   const [rogueModeEnabled, setRogueModeEnabled] = useState(false);
   const [safeModeMaxQueries, setSafeModeMaxQueries] = useState(5);
   const [keystoreUrl, setKeystoreUrl] = useState('');
+  const [chatSessionMemoryGeneration, setChatSessionMemoryGeneration] = useState(true);
   const [autoSyncStatus, setAutoSyncStatus] = useState<AutoSyncStatus | null>(null);
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [walletMode, setWalletMode] = useState<string>('');
@@ -84,6 +85,7 @@ export default function BotSettings() {
       setRogueModeEnabled(data.rogue_mode_enabled || false);
       setSafeModeMaxQueries(data.safe_mode_max_queries_per_10min || 5);
       setKeystoreUrl(data.keystore_url || '');
+      setChatSessionMemoryGeneration(data.chat_session_memory_generation ?? true);
       if (data.custom_rpc_endpoints) {
         setCustomRpcBase(data.custom_rpc_endpoints.base || '');
         setCustomRpcMainnet(data.custom_rpc_endpoints.mainnet || '');
@@ -124,6 +126,7 @@ export default function BotSettings() {
         custom_rpc_endpoints: customEndpoints,
         safe_mode_max_queries_per_10min: safeModeMaxQueries,
         keystore_url: keystoreUrl,
+        chat_session_memory_generation: chatSessionMemoryGeneration,
       });
       setSettings(updated);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
@@ -378,6 +381,33 @@ export default function BotSettings() {
             <p className="text-xs text-slate-500 -mt-2">
               Maximum number of safe mode queries each user can make within a 10-minute window.
               Applies to non-admin users on Discord, Twitter mentions, etc.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Session Memory Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-stark-400" />
+              Session Memory
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={chatSessionMemoryGeneration}
+                onChange={(e) => setChatSessionMemoryGeneration(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-stark-500 focus:ring-stark-500"
+              />
+              <span className="text-sm text-slate-300">
+                Log completed sessions to daily memory
+              </span>
+            </label>
+            <p className="text-xs text-slate-500">
+              When enabled, the user's input and the bot's final response are appended to the daily memory log
+              when a chat session completes. Safe mode sessions are logged under the safemode identity.
             </p>
           </CardContent>
         </Card>

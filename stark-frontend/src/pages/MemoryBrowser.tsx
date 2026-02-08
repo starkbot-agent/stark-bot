@@ -82,6 +82,30 @@ interface StatsResponse {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** Render a human-readable label for a memory identity */
+function identityLabel(id: string | null): string {
+  if (!id) return 'Standard';
+  if (id === 'safemode') return 'Safe Mode';
+  // UUID identity — truncate
+  return id.length > 12 ? id.slice(0, 8) + '...' : id;
+}
+
+/** Mode badge component for file list items */
+function ModeBadge({ identityId }: { identityId: string | null }) {
+  if (identityId === 'safemode') {
+    return (
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">
+        Safe
+      </span>
+    );
+  }
+  return null;
+}
+
+// ============================================================================
 // API Functions
 // ============================================================================
 
@@ -497,8 +521,8 @@ export default function MemoryBrowser() {
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
 
-  // Filter state
-  const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+  // Filter state: "all" | "standard" | "safemode"
+  const [modeFilter, setModeFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   // Add entry modal
@@ -555,7 +579,7 @@ export default function MemoryBrowser() {
     setLoadingContent(true);
     setSelectedDate(date);
     try {
-      const response = await getDailyLog(date, selectedIdentity || undefined);
+      const response = await getDailyLog(date, modeFilter === 'safemode' ? 'safemode' : undefined);
       if (response.success) {
         setFileContent(response.content || '');
         setSelectedFile(response.path);
@@ -585,11 +609,13 @@ export default function MemoryBrowser() {
     }
   };
 
-  // Filter files by identity
+  // Filter files by mode
   const filteredFiles = useMemo(() => {
-    if (!selectedIdentity) return files;
-    return files.filter((f) => f.identity_id === selectedIdentity);
-  }, [files, selectedIdentity]);
+    if (modeFilter === 'all') return files;
+    if (modeFilter === 'safemode') return files.filter((f) => f.identity_id === 'safemode');
+    // "standard" = everything that's NOT safemode
+    return files.filter((f) => f.identity_id !== 'safemode');
+  }, [files, modeFilter]);
 
   // Group files by type
   const groupedFiles = useMemo(() => {
@@ -657,7 +683,7 @@ export default function MemoryBrowser() {
               }`}
             >
               <FolderOpen className="w-4 h-4 inline mr-1.5" />
-              Files
+              Memories
             </button>
             <button
               onClick={() => setViewMode('calendar')}
@@ -683,24 +709,19 @@ export default function MemoryBrowser() {
             </button>
           </div>
 
-          {/* Identity filter */}
-          {stats && stats.identities.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <User className="w-4 h-4 text-slate-500" />
-              <select
-                value={selectedIdentity || ''}
-                onChange={(e) => setSelectedIdentity(e.target.value || null)}
-                className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white"
-              >
-                <option value="">All identities</option>
-                {stats.identities.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Mode filter */}
+          <div className="flex items-center gap-2 ml-auto">
+            <User className="w-4 h-4 text-slate-500" />
+            <select
+              value={modeFilter}
+              onChange={(e) => setModeFilter(e.target.value)}
+              className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm text-white"
+            >
+              <option value="all">All Memories</option>
+              <option value="standard">Standard</option>
+              <option value="safemode">Safe Mode</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -748,9 +769,10 @@ export default function MemoryBrowser() {
                         <div className="flex items-center gap-2">
                           <FileTypeIcon type={file.file_type} />
                           <span className="truncate">{file.name}</span>
+                          <ModeBadge identityId={file.identity_id} />
                         </div>
-                        {file.identity_id && (
-                          <span className="text-xs text-slate-500 ml-6">{file.identity_id}</span>
+                        {file.identity_id && file.identity_id !== 'safemode' && (
+                          <span className="text-xs text-slate-500 ml-6">{identityLabel(file.identity_id)}</span>
                         )}
                       </button>
                     ))}
@@ -788,14 +810,15 @@ export default function MemoryBrowser() {
                         <div className="flex items-center gap-2">
                           <FileTypeIcon type={file.file_type} />
                           <span>{file.date}</span>
+                          <ModeBadge identityId={file.identity_id} />
                           <span className="text-xs text-slate-500 ml-auto">
                             {file.size > 1024
                               ? `${(file.size / 1024).toFixed(1)}KB`
                               : `${file.size}B`}
                           </span>
                         </div>
-                        {file.identity_id && (
-                          <span className="text-xs text-slate-500 ml-6">{file.identity_id}</span>
+                        {file.identity_id && file.identity_id !== 'safemode' && (
+                          <span className="text-xs text-slate-500 ml-6">{identityLabel(file.identity_id)}</span>
                         )}
                       </button>
                     ))}
@@ -934,7 +957,7 @@ export default function MemoryBrowser() {
       {addEntryType && (
         <AddEntryModal
           type={addEntryType}
-          identityId={selectedIdentity}
+          identityId={modeFilter === 'safemode' ? 'safemode' : null}
           onClose={() => setAddEntryType(null)}
           onSuccess={() => {
             loadData();

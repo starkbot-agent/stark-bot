@@ -1171,6 +1171,7 @@ export interface BotSettings {
   rogue_mode_enabled: boolean;
   safe_mode_max_queries_per_10min: number;
   keystore_url?: string;
+  chat_session_memory_generation: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1189,6 +1190,7 @@ export async function updateBotSettings(data: {
   rogue_mode_enabled?: boolean;
   safe_mode_max_queries_per_10min?: number;
   keystore_url?: string;
+  chat_session_memory_generation?: boolean;
 }): Promise<BotSettings> {
   return apiFetch('/bot-settings', {
     method: 'PUT',

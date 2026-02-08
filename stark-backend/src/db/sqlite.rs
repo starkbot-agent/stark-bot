@@ -342,6 +342,20 @@ impl Database {
             conn.execute("ALTER TABLE bot_settings ADD COLUMN enable_memory_access_for_safemode_gateway_channels INTEGER NOT NULL DEFAULT 0", [])?;
         }
 
+        // Migration: Add chat_session_memory_generation column to bot_settings if it doesn't exist
+        let has_chat_session_memory_gen: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('bot_settings') WHERE name='chat_session_memory_generation'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_chat_session_memory_gen {
+            conn.execute("ALTER TABLE bot_settings ADD COLUMN chat_session_memory_generation INTEGER NOT NULL DEFAULT 1", [])?;
+        }
+
         // Initialize bot_settings with defaults if empty
         let bot_settings_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM bot_settings", [], |row| row.get(0))
