@@ -458,6 +458,24 @@ pub async fn start_twitter_listener(
                                     continue;
                                 }
 
+                                // Skip replies to bot's tweets unless they explicitly @mention the bot.
+                                // Twitter auto-prepends @bot_handle when replying, so we ignore those
+                                // unless the user typed @bot_handle themselves in the reply body.
+                                if is_implicit_reply_to_bot(&mention, &config, &bot_mention_regex) {
+                                    log::info!(
+                                        "Twitter: Skipping reply-to-bot {} (no explicit @{} in body)",
+                                        mention.id, config.bot_handle
+                                    );
+                                    let _ = db.mark_tweet_processed(
+                                        &mention.id,
+                                        channel_id,
+                                        &mention.author_id,
+                                        "unknown",
+                                        &mention.text,
+                                    );
+                                    continue;
+                                }
+
                                 // Reset hourly counter if an hour has elapsed
                                 if hour_start.elapsed() >= Duration::from_secs(3600) {
                                     hour_start = Instant::now();
@@ -710,6 +728,26 @@ async fn poll_mentions(
         tweets: data.data.unwrap_or_default(),
         rate_limit,
     })
+}
+
+/// Check if a tweet is a reply to the bot that doesn't explicitly mention @bot_handle.
+/// Twitter auto-prepends @bot_handle when replying to the bot's tweet, which causes
+/// the search API to pick it up. We only want to respond if the user explicitly
+/// @'d the bot in the body of their reply (not just via the auto-prepended mention).
+fn is_implicit_reply_to_bot(tweet: &Tweet, config: &TwitterConfig, bot_mention_regex: &Regex) -> bool {
+    // Only applies to direct replies to the bot's tweets
+    if tweet.in_reply_to_user_id.as_deref() != Some(config.bot_user_id.as_str()) {
+        return false;
+    }
+
+    // Strip all leading @mentions (the auto-prepended ones from Twitter)
+    let mut text = tweet.text.clone();
+    while LEADING_MENTION_PATTERN.is_match(&text) {
+        text = LEADING_MENTION_PATTERN.replace(&text, "").to_string();
+    }
+
+    // If @bot_handle doesn't appear in the remaining text, it was only auto-prepended
+    !bot_mention_regex.is_match(&text)
 }
 
 /// Check if a tweet is a retweet or quote tweet
@@ -1317,6 +1355,78 @@ mod tests {
             _ => false,
         };
         assert!(!is_thread, "Tweet without conversation_id should not be thread");
+    }
+
+    #[test]
+    fn test_is_implicit_reply_to_bot() {
+        let re = Regex::new(r"(?i)@starkbot").unwrap();
+        let config = TwitterConfig {
+            bot_handle: "starkbot".to_string(),
+            bot_user_id: "999".to_string(),
+            poll_interval_secs: 120,
+            subscription_tier: XSubscriptionTier::None,
+            reply_chance: 100,
+            max_mentions_per_hour: 0,
+            admin_user_id: None,
+            credentials: TwitterCredentials::new(
+                "k".to_string(), "s".to_string(), "t".to_string(), "ts".to_string(),
+            ),
+        };
+
+        // Reply to bot with only auto-prepended mention → implicit, should skip
+        let implicit = Tweet {
+            id: "1".to_string(),
+            text: "@starkbot thanks for the info!".to_string(),
+            author_id: "200".to_string(),
+            conversation_id: Some("50".to_string()),
+            in_reply_to_user_id: Some("999".to_string()),
+            referenced_tweets: None,
+        };
+        assert!(is_implicit_reply_to_bot(&implicit, &config, &re));
+
+        // Reply to bot with explicit @starkbot in body → NOT implicit, should process
+        let explicit = Tweet {
+            id: "2".to_string(),
+            text: "@starkbot hey @starkbot what about tomorrow?".to_string(),
+            author_id: "200".to_string(),
+            conversation_id: Some("50".to_string()),
+            in_reply_to_user_id: Some("999".to_string()),
+            referenced_tweets: None,
+        };
+        assert!(!is_implicit_reply_to_bot(&explicit, &config, &re));
+
+        // Reply to someone else (not the bot) → not implicit, should process
+        let reply_to_other = Tweet {
+            id: "3".to_string(),
+            text: "@otheruser @starkbot what do you think?".to_string(),
+            author_id: "200".to_string(),
+            conversation_id: Some("50".to_string()),
+            in_reply_to_user_id: Some("300".to_string()),
+            referenced_tweets: None,
+        };
+        assert!(!is_implicit_reply_to_bot(&reply_to_other, &config, &re));
+
+        // Direct mention (not a reply at all) → not implicit, should process
+        let direct = Tweet {
+            id: "4".to_string(),
+            text: "@starkbot what's the price of ETH?".to_string(),
+            author_id: "200".to_string(),
+            conversation_id: Some("4".to_string()),
+            in_reply_to_user_id: None,
+            referenced_tweets: None,
+        };
+        assert!(!is_implicit_reply_to_bot(&direct, &config, &re));
+
+        // Reply to bot in thread with multiple auto-prepended mentions, no explicit bot mention
+        let thread_reply = Tweet {
+            id: "5".to_string(),
+            text: "@starkbot @alice I agree with alice".to_string(),
+            author_id: "200".to_string(),
+            conversation_id: Some("50".to_string()),
+            in_reply_to_user_id: Some("999".to_string()),
+            referenced_tweets: None,
+        };
+        assert!(is_implicit_reply_to_bot(&thread_reply, &config, &re));
     }
 
     #[test]
