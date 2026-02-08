@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom'
 import Home from './views/Home'
 import BrandKit from './views/BrandKit'
+import StarkLicense from './views/StarkLicense'
 
 // Import markdown docs as components
 import DocsOverview from './pages/docs/overview.md'
@@ -20,6 +21,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/brand-kit" element={<BrandKit />} />
+      <Route path="/starklicense" element={<StarkLicense />} />
       <Route path="/docs" element={<DocsOverview />} />
       <Route path="/docs/getting-started" element={<DocsGettingStarted />} />
       <Route path="/docs/architecture" element={<DocsArchitecture />} />

@@ -304,3 +304,8 @@ body {
 .group:hover .group-hover-heartbeat {
   animation: heartbeat 1s ease-in-out infinite;
 }
+
+/* License card ID glow */
+.license-id-glow {
+  text-shadow: 0 0 20px rgba(99, 102, 241, 0.5), 0 0 40px rgba(59, 130, 246, 0.3);
+}
