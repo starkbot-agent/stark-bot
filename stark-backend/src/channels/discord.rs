@@ -164,7 +164,7 @@ impl EventHandler for DiscordHandler {
                     );
 
                     let text_with_hint = format!(
-                        "[DISCORD MESSAGE - Use discord skill for tipping/messaging. Use discord_resolve_user to resolve @mentions to addresses.]\n\n{}",
+                        "[DISCORD MESSAGE - Use discord skill for tipping/messaging.]\n\n{}",
                         forward.text
                     );
 
