@@ -1,11 +1,12 @@
 ---
 name: discord_tipping
 description: "Tip Discord users with tokens. Resolves Discord mentions to wallet addresses and executes ERC20 transfers."
-version: 2.1.0
+version: 2.2.0
 author: starkbot
 metadata: {"clawdbot":{"emoji":"💸"}}
 tags: [discord, tipping, crypto, transfer, erc20]
-requires_tools: [set_agent_subtype, discord_resolve_user, token_lookup, to_raw_amount, web3_preset_function_call, list_queued_web3_tx, broadcast_web3_tx, verify_tx_broadcast, define_tasks]
+sets_agent_subtype: finance
+requires_tools: [discord_resolve_user, token_lookup, to_raw_amount, web3_preset_function_call, list_queued_web3_tx, broadcast_web3_tx, verify_tx_broadcast, define_tasks]
 ---
 
 # Discord Tipping
@@ -22,40 +23,26 @@ Send tokens to Discord users by resolving their mention to a registered wallet a
 4. **Sequential tool calls only.** Never call two tools in parallel when the second depends on the first.
 5. **Register pattern prevents hallucination.** Never pass raw addresses/amounts directly — always use registers set by the tools.
 
-## Step 1: Define all tasks
+## Step 1: Define the eight tasks
 
-Call `define_tasks` with all 9 tasks in order:
+Call `define_tasks` with all 8 tasks in order:
 
 ```json
 {"tool": "define_tasks", "tasks": [
-  "TASK 1 — Set agent subtype to finance. See discord_tipping skill 'Task 1'.",
-  "TASK 2 — Resolve Discord mention to wallet address. See discord_tipping skill 'Task 2'.",
-  "TASK 3 — Look up token contract. See discord_tipping skill 'Task 3'.",
-  "TASK 4 — Check token balance. See discord_tipping skill 'Task 4'.",
-  "TASK 5 — Report preparation findings. See discord_tipping skill 'Task 5'.",
-  "TASK 6 — Convert amount to raw units. See discord_tipping skill 'Task 6'.",
-  "TASK 7 — Create transfer transaction. See discord_tipping skill 'Task 7'.",
-  "TASK 8 — Broadcast transaction. See discord_tipping skill 'Task 8'.",
-  "TASK 9 — Verify transfer and report result. See discord_tipping skill 'Task 9'."
+  "TASK 1 — Resolve Discord mention to wallet address. See discord_tipping skill 'Task 1'.",
+  "TASK 2 — Look up token contract. See discord_tipping skill 'Task 2'.",
+  "TASK 3 — Check token balance. See discord_tipping skill 'Task 3'.",
+  "TASK 4 — Report preparation findings. See discord_tipping skill 'Task 4'.",
+  "TASK 5 — Convert amount to raw units. See discord_tipping skill 'Task 5'.",
+  "TASK 6 — Create transfer transaction. See discord_tipping skill 'Task 6'.",
+  "TASK 7 — Broadcast transaction. See discord_tipping skill 'Task 7'.",
+  "TASK 8 — Verify transfer and report result. See discord_tipping skill 'Task 8'."
 ]}
 ```
 
 ---
 
-## Task 1: Set agent subtype to finance
-
-```json
-{"tool": "set_agent_subtype", "subtype": "finance"}
-```
-
-After success:
-```json
-{"tool": "task_fully_completed", "summary": "Agent subtype set to finance."}
-```
-
----
-
-## Task 2: Resolve Discord mention
+## Task 1: Resolve Discord mention
 
 Extract the Discord user ID from the mention and resolve it to a wallet address:
 
@@ -75,7 +62,7 @@ After success:
 
 ---
 
-## Task 3: Look up token
+## Task 2: Look up token
 
 ```json
 {"tool": "token_lookup", "symbol": "<TOKEN>", "network": "base", "cache_as": "token_address"}
@@ -90,7 +77,7 @@ After success:
 
 ---
 
-## Task 4: Check token balance
+## Task 3: Check token balance
 
 ```json
 {"tool": "web3_preset_function_call", "preset": "erc20_balance", "network": "base", "call_only": true}
@@ -105,7 +92,7 @@ After success:
 
 ---
 
-## Task 5: Report preparation findings
+## Task 4: Report preparation findings
 
 Tell the user what you found (recipient, token, balance) using `say_to_user` with `finished_task: true`:
 
@@ -117,7 +104,7 @@ Tell the user what you found (recipient, token, balance) using `say_to_user` wit
 
 ---
 
-## Task 6: Convert amount to raw units
+## Task 5: Convert amount to raw units
 
 ```json
 {"tool": "to_raw_amount", "amount": "<human_amount>", "cache_as": "transfer_amount"}
@@ -132,7 +119,7 @@ After success:
 
 ---
 
-## Task 7: Create transfer transaction
+## Task 6: Create transfer transaction
 
 ```json
 {"tool": "web3_preset_function_call", "preset": "erc20_transfer", "network": "base"}
@@ -149,7 +136,7 @@ After success:
 
 ---
 
-## Task 8: Broadcast transaction
+## Task 7: Broadcast transaction
 
 ```json
 {"tool": "broadcast_web3_tx", "uuid": "<uuid_from_previous_task>"}
@@ -162,7 +149,7 @@ After broadcast succeeds:
 
 ---
 
-## Task 9: Verify transfer
+## Task 8: Verify transfer
 
 Call `verify_tx_broadcast` to poll for the receipt and confirm the result:
 

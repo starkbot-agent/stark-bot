@@ -72,7 +72,7 @@ pub struct SkillMetadata {
     pub homepage: Option<String>,
     #[serde(default)]
     pub metadata: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "sets_agent_subtype")]
     pub subagent_type: Option<String>,
 }
 

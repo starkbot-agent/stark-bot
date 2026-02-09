@@ -1059,6 +1059,9 @@ impl MessageDispatcher {
 
                 log::info!("[SKILL_DETECTION] Detected 'tip @user' pattern, pre-activating discord_tipping skill");
 
+                // Auto-set subtype if skill specifies one (before tool refresh)
+                self.apply_skill_subtype(&skill, &mut orchestrator, original_message.channel_id);
+
                 orchestrator.context_mut().active_skill = Some(crate::ai::multi_agent::types::ActiveSkill {
                     name: skill.name,
                     instructions,
@@ -1222,6 +1225,33 @@ impl MessageDispatcher {
             subtype,
             tool_summaries,
         ));
+    }
+
+    /// Auto-set the orchestrator's subtype if the skill specifies one.
+    /// Returns the new subtype if it changed, so the caller can use it for tool refresh.
+    fn apply_skill_subtype(
+        &self,
+        skill: &crate::skills::types::DbSkill,
+        orchestrator: &mut Orchestrator,
+        channel_id: i64,
+    ) -> Option<AgentSubtype> {
+        if let Some(ref subtype_str) = skill.subagent_type {
+            if let Some(new_subtype) = AgentSubtype::from_str(subtype_str) {
+                orchestrator.set_subtype(new_subtype);
+                log::info!(
+                    "[SKILL] Auto-set subtype to {} for skill '{}'",
+                    new_subtype.label(),
+                    skill.name
+                );
+                self.broadcaster.broadcast(GatewayEvent::agent_subtype_change(
+                    channel_id,
+                    new_subtype.as_str(),
+                    new_subtype.label(),
+                ));
+                return Some(new_subtype);
+            }
+        }
+        None
     }
 
     /// Create a "use_skill" tool definition if skills are enabled
@@ -2122,6 +2152,9 @@ impl MessageDispatcher {
                                             requires_tools
                                         );
 
+                                        // Auto-set subtype if skill specifies one (before tool refresh)
+                                        self.apply_skill_subtype(&skill, orchestrator, original_message.channel_id);
+
                                         orchestrator.context_mut().active_skill = Some(crate::ai::multi_agent::types::ActiveSkill {
                                             name: skill.name,
                                             instructions,
@@ -3003,6 +3036,9 @@ impl MessageDispatcher {
                                                     skill.name,
                                                     requires_tools
                                                 );
+
+                                                // Auto-set subtype if skill specifies one (before tool refresh)
+                                                self.apply_skill_subtype(&skill, orchestrator, original_message.channel_id);
 
                                                 orchestrator.context_mut().active_skill = Some(crate::ai::multi_agent::types::ActiveSkill {
                                                     name: skill.name,
