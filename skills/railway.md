@@ -20,9 +20,9 @@ Manage your Railway infrastructure using the Railway CLI. Deploy services, manag
 key_name: RAILWAY_TOKEN
 ```
 
-If not configured, ask the user to create an **Account Token** at https://railway.com/account/tokens and add it in Settings > API Keys as `RAILWAY_TOKEN`.
+If not configured, ask the user to create a token at https://railway.com/account/tokens and add it in Settings > API Keys as `RAILWAY_TOKEN`.
 
-The `RAILWAY_TOKEN` env var is automatically injected into all `exec` commands.
+Both `RAILWAY_API_TOKEN` and `RAILWAY_TOKEN` env vars are automatically injected into all `exec` commands. This handles both account/workspace tokens and project tokens.
 
 ---
 
@@ -48,8 +48,10 @@ timeout: 120
 
 ### 1. Verify Authentication
 
+Use `railway list` to verify auth (works with all token types — account, workspace, and project tokens). Do NOT use `railway whoami` as it only works with account tokens and will fail with workspace/project tokens.
+
 ```tool:exec
-command: railway whoami
+command: railway list
 timeout: 30
 ```
 
@@ -230,7 +232,8 @@ timeout: 30
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| `Unauthorized` | Token is invalid/expired or wrong type | Regenerate an **Account Token** at https://railway.com/account/tokens |
+| `Unauthorized` on `whoami` | `whoami` only works with Account tokens, not workspace/project tokens | Use `railway list` instead to verify auth, or create an Account Token (select "No workspace") |
+| `Unauthorized` on other commands | Token is invalid/expired or wrong scope | Regenerate token at https://railway.com/account/tokens |
 | `Cannot login in non-interactive mode` | CLI requires browser login | Use `RAILWAY_TOKEN` env var instead (already injected by exec) |
 | `No project linked` | CLI doesn't know which project to target | Use `railway link --project ID --environment ID` first |
 | Service creation fails | Railway GitHub app not authorized | Install at https://railway.com/account/github |
@@ -244,7 +247,7 @@ timeout: 30
 
 ## Typical Workflow
 
-1. **Verify auth** — `railway whoami`
+1. **Verify auth** — `railway list` (NOT `whoami` — it only works with account tokens)
 2. **List projects** — `railway list`
 3. **Link to project** — `railway link --project ID --environment ID`
 4. **Check status** — `railway status`

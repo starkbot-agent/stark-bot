@@ -78,7 +78,7 @@ impl ApiKeyId {
             Self::TwitterConsumerSecret => Some(&["TWITTER_CONSUMER_SECRET", "TWITTER_API_SECRET"]),
             Self::TwitterAccessToken => Some(&["TWITTER_ACCESS_TOKEN"]),
             Self::TwitterAccessTokenSecret => Some(&["TWITTER_ACCESS_TOKEN_SECRET"]),
-            Self::RailwayToken => Some(&["RAILWAY_TOKEN"]),
+            Self::RailwayToken => Some(&["RAILWAY_API_TOKEN", "RAILWAY_TOKEN"]),
         }
     }
 
