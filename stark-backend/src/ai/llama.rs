@@ -9,10 +9,12 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
 
+
 /// Llama client for Ollama API (with tool support for Llama 3.1+)
 #[derive(Clone)]
 pub struct LlamaClient {
     client: Client,
+    auth_headers: header::HeaderMap,
     endpoint: String,
     model: String,
     /// Optional broadcaster for emitting retry events
@@ -87,20 +89,15 @@ struct OllamaErrorResponse {
 
 impl LlamaClient {
     pub fn new(endpoint: Option<&str>, model: Option<&str>) -> Result<Self, String> {
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
+        let mut auth_headers = header::HeaderMap::new();
+        auth_headers.insert(
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/json"),
         );
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(300)) // Llama can be slower
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
+            auth_headers,
             endpoint: endpoint
                 .unwrap_or("http://localhost:11434/api/chat")
                 .to_string(),
@@ -180,6 +177,8 @@ impl LlamaClient {
             let request_result = self
                 .client
                 .post(&self.endpoint)
+                .headers(self.auth_headers.clone())
+                .timeout(Duration::from_secs(300))
                 .json(&request)
                 .send()
                 .await;
@@ -331,6 +330,8 @@ impl LlamaClient {
             let request_result = self
                 .client
                 .post(&self.endpoint)
+                .headers(self.auth_headers.clone())
+                .timeout(Duration::from_secs(300))
                 .json(&request)
                 .send()
                 .await;

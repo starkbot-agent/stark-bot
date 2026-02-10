@@ -214,7 +214,7 @@ impl Tool for Erc8128FetchTool {
         };
 
         // Build the HTTP request
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         let mut req = match method.as_str() {
             "GET" => client.get(&params.url),
             "POST" => client.post(&params.url),

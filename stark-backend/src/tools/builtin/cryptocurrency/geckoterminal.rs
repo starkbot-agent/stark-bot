@@ -243,11 +243,7 @@ impl Tool for GeckoTerminalTool {
             return ToolResult::error("'query' is required (token symbol, name, or address)");
         }
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .user_agent("StarkBot/1.0")
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        let client = crate::http::shared_client();
 
         // Build search URL
         let mut url = format!(
@@ -265,7 +261,7 @@ impl Tool for GeckoTerminalTool {
             url.push_str(&format!("&network={}", urlencoding::encode(normalized)));
         }
 
-        let resp = match client.get(&url).send().await {
+        let resp = match client.get(&url).timeout(std::time::Duration::from_secs(15)).header("User-Agent", "StarkBot/1.0").send().await {
             Ok(r) => r,
             Err(e) => return ToolResult::error(format!("GeckoTerminal request failed: {}", e)),
         };

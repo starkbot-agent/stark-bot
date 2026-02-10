@@ -352,7 +352,7 @@ pub async fn start_twitter_listener(
         .unwrap_or_else(|_| Regex::new(r"(?i)@\w+").unwrap());
 
     // Validate credentials by fetching user info
-    let client = reqwest::Client::new();
+    let client = crate::http::shared_client().clone();
     match verify_credentials(&client, &config).await {
         Ok(username) => {
             log::info!("Twitter: Credentials validated for @{}", username);

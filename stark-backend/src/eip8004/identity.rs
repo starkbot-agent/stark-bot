@@ -236,7 +236,7 @@ impl IdentityRegistry {
     pub async fn fetch_registration(&self, uri: &str) -> Result<RegistrationFile, String> {
         let url = self.resolve_uri(uri);
 
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client();
         let response = client
             .get(&url)
             .timeout(std::time::Duration::from_secs(30))

@@ -177,7 +177,7 @@ impl AgentSendTool {
         }
 
         // Send the request
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         match client.post(&url).json(&body).send().await {
             Ok(response) => {
                 let status = response.status();
@@ -232,7 +232,7 @@ impl AgentSendTool {
         }
 
         // Send the request
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         match client
             .post(&url)
             .header("Authorization", format!("Bot {}", bot_token))
@@ -290,7 +290,7 @@ impl AgentSendTool {
         }
 
         // Send the request
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         match client
             .post(url)
             .header("Authorization", format!("Bearer {}", bot_token))

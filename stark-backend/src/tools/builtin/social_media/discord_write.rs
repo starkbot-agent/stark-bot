@@ -216,7 +216,7 @@ impl DiscordWriteTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         // For DMs, we need to create a DM channel first
         let channel_id = if target_type == "user" {
@@ -336,7 +336,7 @@ impl DiscordWriteTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let encoded_emoji = urlencoding::encode(emoji);
 
@@ -393,7 +393,7 @@ impl DiscordWriteTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!(
             "https://discord.com/api/v10/channels/{}/messages/{}",
@@ -442,7 +442,7 @@ impl DiscordWriteTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!(
             "https://discord.com/api/v10/channels/{}/messages/{}",

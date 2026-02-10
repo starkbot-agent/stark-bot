@@ -80,7 +80,7 @@ impl X402Signer {
         });
 
         // Make the RPC call
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client();
         let response = client
             .post(rpc_url)
             .json(&request)

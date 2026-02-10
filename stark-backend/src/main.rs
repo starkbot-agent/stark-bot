@@ -28,6 +28,7 @@ mod x402;
 mod erc8128;
 mod eip8004;
 mod hooks;
+pub mod http;
 mod tool_validators;
 mod tx_queue;
 mod web3;

@@ -339,14 +339,12 @@ async fn fetch_markdown_from_url(url: &str) -> Result<String, String> {
         return Err("URL must start with http:// or https://".to_string());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("StarkBot/1.0 (Skill Installer)")
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = crate::http::shared_client();
 
     let response = client
         .get(url)
+        .timeout(std::time::Duration::from_secs(30))
+        .header("User-Agent", "StarkBot/1.0 (Skill Installer)")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch URL: {}", e))?;

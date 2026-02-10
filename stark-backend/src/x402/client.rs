@@ -3,7 +3,6 @@
 use reqwest::{header, Client, Response};
 use serde::Serialize;
 use std::sync::Arc;
-use std::time::Duration;
 
 use super::signer::X402Signer;
 use super::types::{PaymentRequired, X402PaymentInfo};
@@ -24,34 +23,24 @@ pub struct X402Client {
 impl X402Client {
     /// Create a new x402 client with a WalletProvider (preferred)
     pub fn new(wallet_provider: Arc<dyn WalletProvider>) -> Result<Self, String> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
         let signer = X402Signer::new(wallet_provider.clone());
 
         log::info!("[X402] Initialized with wallet address: {}", signer.address());
 
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
             signer: Arc::new(signer),
         })
     }
 
     /// Create a new x402 client with a private key (backward compatible)
     pub fn from_private_key(private_key: &str) -> Result<Self, String> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
         let signer = X402Signer::from_private_key(private_key)?;
 
         log::info!("[X402] Initialized with wallet address: {}", signer.address());
 
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
             signer: Arc::new(signer),
         })
     }

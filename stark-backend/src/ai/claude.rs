@@ -15,6 +15,7 @@ use std::time::Duration;
 
 pub struct ClaudeClient {
     client: Client,
+    auth_headers: header::HeaderMap,
     endpoint: String,
     model: String,
     /// Thinking budget in tokens (0 = disabled)
@@ -29,6 +30,7 @@ impl Clone for ClaudeClient {
     fn clone(&self) -> Self {
         ClaudeClient {
             client: self.client.clone(),
+            auth_headers: self.auth_headers.clone(),
             endpoint: self.endpoint.clone(),
             model: self.model.clone(),
             thinking_budget: AtomicU32::new(self.thinking_budget.load(Ordering::SeqCst)),
@@ -125,28 +127,23 @@ struct ClaudeError {
 
 impl ClaudeClient {
     pub fn new(api_key: &str, endpoint: Option<&str>, model: Option<&str>) -> Result<Self, String> {
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
+        let mut auth_headers = header::HeaderMap::new();
+        auth_headers.insert(
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/json"),
         );
 
         let auth_value = header::HeaderValue::from_str(api_key)
             .map_err(|e| format!("Invalid API key format: {}", e))?;
-        headers.insert("x-api-key", auth_value);
-        headers.insert(
+        auth_headers.insert("x-api-key", auth_value);
+        auth_headers.insert(
             "anthropic-version",
             header::HeaderValue::from_static("2023-06-01"),
         );
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
+            auth_headers,
             endpoint: endpoint
                 .unwrap_or("https://api.anthropic.com/v1/messages")
                 .to_string(),
@@ -267,6 +264,7 @@ impl ClaudeClient {
             let request_result = self
                 .client
                 .post(&self.endpoint)
+                .headers(self.auth_headers.clone())
                 .json(&request)
                 .send()
                 .await;
@@ -446,6 +444,7 @@ impl ClaudeClient {
             let request_result = self
                 .client
                 .post(&self.endpoint)
+                .headers(self.auth_headers.clone())
                 .json(&request)
                 .send()
                 .await;

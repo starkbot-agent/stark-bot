@@ -531,7 +531,7 @@ impl PolymarketTradeTool {
         };
 
         // Fetch positions from Data API
-        let http_client = reqwest::Client::new();
+        let http_client = crate::http::shared_client().clone();
         let url = format!("https://data-api.polymarket.com/positions?user={}", wallet_address);
 
         match http_client.get(&url).send().await {
@@ -600,7 +600,7 @@ impl PolymarketTradeTool {
         let offset = params.offset.unwrap_or(0);
         let tag = params.tag.as_deref();
 
-        let http_client = reqwest::Client::new();
+        let http_client = crate::http::shared_client().clone();
 
         // Build URL with query params
         let mut url = format!(
@@ -648,7 +648,7 @@ impl PolymarketTradeTool {
         let offset = params.offset.unwrap_or(0);
         let tag = params.tag.as_deref();
 
-        let http_client = reqwest::Client::new();
+        let http_client = crate::http::shared_client().clone();
 
         // Get markets sorted by volume (trending)
         let mut url = format!(
@@ -693,7 +693,7 @@ impl PolymarketTradeTool {
             None => return ToolResult::error("slug is required for get_market (e.g., 'will-bitcoin-hit-100k')"),
         };
 
-        let http_client = reqwest::Client::new();
+        let http_client = crate::http::shared_client().clone();
         let url = format!("https://gamma-api.polymarket.com/events?slug={}", slug);
 
         match http_client.get(&url).send().await {
@@ -728,7 +728,7 @@ impl PolymarketTradeTool {
             None => return ToolResult::error("token_id is required for get_price"),
         };
 
-        let http_client = reqwest::Client::new();
+        let http_client = crate::http::shared_client().clone();
 
         // Fetch midpoint, spread, and orderbook in parallel
         let midpoint_url = format!("https://clob.polymarket.com/midpoint?token_id={}", token_id);

@@ -12,7 +12,7 @@ use crate::tools::types::{
 };
 use crate::x402::X402Signer;
 use async_trait::async_trait;
-use reqwest::{header, Client};
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -261,14 +261,12 @@ impl Tool for X402PostTool {
             None
         };
 
-        let client = Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        let client = crate::http::shared_client();
 
         // Build initial request with custom headers
         let mut request = client
             .post(&params.url)
+            .timeout(Duration::from_secs(60))
             .header(header::CONTENT_TYPE, "application/json");
 
         // Auto-inject x402book token as Bearer auth if available
@@ -381,6 +379,7 @@ impl Tool for X402PostTool {
         // Retry with payment
         let mut paid_request = client
             .post(&params.url)
+            .timeout(Duration::from_secs(60))
             .header(header::CONTENT_TYPE, "application/json")
             .header("X-PAYMENT", &payment_header);
 

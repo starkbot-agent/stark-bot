@@ -144,7 +144,7 @@ impl TelegramReadTool {
     }
 
     async fn telegram_api_call(token: &str, method: &str, params: &Value) -> Result<Value, ToolResult> {
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         let url = format!("https://api.telegram.org/bot{}/{}", token, method);
 
         let response = client

@@ -170,7 +170,7 @@ impl Tool for TwitterPostTool {
             access_token.clone(),
             access_token_secret.clone(),
         );
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
         let tier = check_subscription_tier(&client, &credentials).await;
         let max_chars = tier.max_tweet_chars();
         let char_count = params.text.chars().count();

@@ -8,7 +8,7 @@ use crate::tools::types::{
 };
 use crate::x402::X402Signer;
 use async_trait::async_trait;
-use reqwest::{header, Client};
+use reqwest::header;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -235,15 +235,12 @@ impl Tool for X402AgentInvokeTool {
 
         log::info!("[x402_agent] Invoking {} with input: {:?}", url, params.input);
 
-        let client = Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))
-            .unwrap_or_else(|_| Client::new());
+        let client = crate::http::shared_client();
 
         // Make initial request
         let initial_response = match client
             .post(&url)
+            .timeout(Duration::from_secs(60))
             .header(header::CONTENT_TYPE, "application/json")
             .json(&body)
             .send()
@@ -362,6 +359,7 @@ impl Tool for X402AgentInvokeTool {
         // Retry with payment
         let paid_response = match client
             .post(&url)
+            .timeout(Duration::from_secs(60))
             .header(header::CONTENT_TYPE, "application/json")
             .header("X-PAYMENT", &payment_header)
             .json(&body)

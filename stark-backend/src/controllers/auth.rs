@@ -293,7 +293,7 @@ async fn flash_login(
     };
 
     // Validate token against control plane
-    let client = reqwest::Client::new();
+    let client = crate::http::shared_client().clone();
     let validate_url = format!("{}/api/auth/validate-token", keystore_url);
 
     let response = match client

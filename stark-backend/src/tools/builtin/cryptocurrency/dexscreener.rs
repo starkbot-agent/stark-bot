@@ -274,11 +274,7 @@ impl Tool for DexScreenerTool {
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
         };
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .user_agent("StarkBot/1.0")
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        let client = crate::http::shared_client();
 
         match params.action.as_str() {
             "search" => {
@@ -289,7 +285,7 @@ impl Tool for DexScreenerTool {
 
                 let url = format!("{}/latest/dex/search?q={}", BASE_URL, urlencoding::encode(query));
 
-                let resp = match client.get(&url).send().await {
+                let resp = match client.get(&url).timeout(std::time::Duration::from_secs(15)).header("User-Agent", "StarkBot/1.0").send().await {
                     Ok(r) => r,
                     Err(e) => return ToolResult::error(format!("Request failed: {}", e)),
                 };
@@ -329,7 +325,7 @@ impl Tool for DexScreenerTool {
 
                 let url = format!("{}/tokens/v1/{}/{}", BASE_URL, chain, address);
 
-                let resp = match client.get(&url).send().await {
+                let resp = match client.get(&url).timeout(std::time::Duration::from_secs(15)).header("User-Agent", "StarkBot/1.0").send().await {
                     Ok(r) => r,
                     Err(e) => return ToolResult::error(format!("Request failed: {}", e)),
                 };
@@ -368,7 +364,7 @@ impl Tool for DexScreenerTool {
 
                 let url = format!("{}/latest/dex/pairs/{}/{}", BASE_URL, chain, address);
 
-                let resp = match client.get(&url).send().await {
+                let resp = match client.get(&url).timeout(std::time::Duration::from_secs(15)).header("User-Agent", "StarkBot/1.0").send().await {
                     Ok(r) => r,
                     Err(e) => return ToolResult::error(format!("Request failed: {}", e)),
                 };
@@ -400,7 +396,7 @@ impl Tool for DexScreenerTool {
             "boosted" | "trending" => {
                 let url = format!("{}/token-boosts/top/v1", BASE_URL);
 
-                let resp = match client.get(&url).send().await {
+                let resp = match client.get(&url).timeout(std::time::Duration::from_secs(15)).header("User-Agent", "StarkBot/1.0").send().await {
                     Ok(r) => r,
                     Err(e) => return ToolResult::error(format!("Request failed: {}", e)),
                 };

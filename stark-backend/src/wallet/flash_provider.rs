@@ -108,10 +108,7 @@ impl FlashWalletProvider {
         let instance_token = std::env::var(env_vars::FLASH_INSTANCE_TOKEN)
             .map_err(|_| format!("{} not set", env_vars::FLASH_INSTANCE_TOKEN))?;
 
-        let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+        let http_client = crate::http::shared_client().clone();
 
         let instance_token = Arc::new(RwLock::new(instance_token));
 
@@ -122,6 +119,7 @@ impl FlashWalletProvider {
         let token = instance_token.read().await.clone();
         let response = http_client
             .get(&url)
+            .timeout(std::time::Duration::from_secs(30))
             .header("X-Tenant-ID", &tenant_id)
             .header("X-Instance-Token", &token)
             .send()
@@ -266,6 +264,7 @@ impl FlashWalletProvider {
 
         let response = self.http_client
             .post(&url)
+            .timeout(std::time::Duration::from_secs(30))
             .header("X-Tenant-ID", &self.tenant_id)
             .header("X-Instance-Token", &old_token)
             .send()
@@ -301,6 +300,7 @@ impl FlashWalletProvider {
 
         let response = self.http_client
             .post(url)
+            .timeout(std::time::Duration::from_secs(30))
             .header("X-Tenant-ID", &self.tenant_id)
             .header("X-Instance-Token", &token)
             .json(body)
@@ -316,6 +316,7 @@ impl FlashWalletProvider {
             let new_token = self.instance_token.read().await.clone();
             let retry_response = self.http_client
                 .post(url)
+                .timeout(std::time::Duration::from_secs(30))
                 .header("X-Tenant-ID", &self.tenant_id)
                 .header("X-Instance-Token", &new_token)
                 .json(body)

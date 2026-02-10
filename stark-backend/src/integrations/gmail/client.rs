@@ -20,7 +20,7 @@ impl GmailClient {
     /// Create a new Gmail client with tokens
     pub fn new(access_token: String, refresh_token: String) -> Self {
         Self {
-            http: Client::new(),
+            http: crate::http::shared_client().clone(),
             access_token,
             refresh_token,
             client_id: None,

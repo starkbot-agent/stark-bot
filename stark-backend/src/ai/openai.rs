@@ -16,6 +16,7 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct OpenAIClient {
     client: Client,
+    auth_headers: header::HeaderMap,
     endpoint: String,
     model: Option<String>,
     max_tokens: u32,
@@ -175,8 +176,8 @@ impl OpenAIClient {
             .unwrap_or("https://api.openai.com/v1/chat/completions")
             .to_string();
 
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
+        let mut auth_headers = header::HeaderMap::new();
+        auth_headers.insert(
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/json"),
         );
@@ -185,14 +186,8 @@ impl OpenAIClient {
         if !api_key.is_empty() {
             let auth_value = header::HeaderValue::from_str(&format!("Bearer {}", api_key))
                 .map_err(|e| format!("Invalid API key format: {}", e))?;
-            headers.insert(header::AUTHORIZATION, auth_value);
+            auth_headers.insert(header::AUTHORIZATION, auth_value);
         }
-
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
         // Create x402 client if wallet provider is provided and endpoint uses x402
         let x402_client = if is_x402_endpoint(&endpoint_url) {
@@ -238,7 +233,8 @@ impl OpenAIClient {
         };
 
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
+            auth_headers,
             endpoint: endpoint_url,
             model: effective_model,
             max_tokens: max_tokens.unwrap_or(40096),
@@ -259,8 +255,8 @@ impl OpenAIClient {
             .unwrap_or("https://api.openai.com/v1/chat/completions")
             .to_string();
 
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
+        let mut auth_headers = header::HeaderMap::new();
+        auth_headers.insert(
             header::CONTENT_TYPE,
             header::HeaderValue::from_static("application/json"),
         );
@@ -269,14 +265,8 @@ impl OpenAIClient {
         if !api_key.is_empty() {
             let auth_value = header::HeaderValue::from_str(&format!("Bearer {}", api_key))
                 .map_err(|e| format!("Invalid API key format: {}", e))?;
-            headers.insert(header::AUTHORIZATION, auth_value);
+            auth_headers.insert(header::AUTHORIZATION, auth_value);
         }
-
-        let client = Client::builder()
-            .default_headers(headers)
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
         // Create x402 client if private key is provided and endpoint uses x402
         let x402_client = if is_x402_endpoint(&endpoint_url) {
@@ -323,7 +313,8 @@ impl OpenAIClient {
         };
 
         Ok(Self {
-            client,
+            client: crate::http::shared_client().clone(),
+            auth_headers,
             endpoint: endpoint_url,
             model: model_name,
             max_tokens: max_tokens.unwrap_or(40000),
@@ -499,6 +490,7 @@ impl OpenAIClient {
             } else {
                 self.client
                     .post(&self.endpoint)
+                    .headers(self.auth_headers.clone())
                     .json(&request)
                     .send()
                     .await
@@ -806,6 +798,7 @@ impl OpenAIClient {
 
             let request_result = self.client
                 .post(&self.endpoint)
+                .headers(self.auth_headers.clone())
                 .json(&request)
                 .send()
                 .await;

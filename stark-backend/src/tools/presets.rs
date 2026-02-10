@@ -222,10 +222,11 @@ pub fn list_web3_presets() -> Vec<String> {
         .unwrap_or_else(|| vec![
             "weth_deposit".to_string(),
             "weth_withdraw".to_string(),
-            "erc20_approve_permit2".to_string(),
-            "erc20_allowance_permit2".to_string(),
+            "erc20_approve_swap".to_string(),
+            "erc20_allowance_swap".to_string(),
             "erc20_balance".to_string(),
             "erc20_transfer".to_string(),
+            "swap_execute".to_string(),
         ])
 }
 
@@ -314,7 +315,7 @@ fn default_web3_presets() -> HashMap<String, Web3Preset> {
         description: "Unwrap WETH to ETH".to_string(),
     });
 
-    map.insert("erc20_approve_permit2".to_string(), Web3Preset {
+    map.insert("erc20_approve_swap".to_string(), Web3Preset {
         abi: "erc20".to_string(),
         contracts: HashMap::new(),
         contract_register: Some("sell_token".to_string()),
@@ -322,13 +323,13 @@ fn default_web3_presets() -> HashMap<String, Web3Preset> {
         params_registers: vec![],
         value_register: None,
         static_params: vec![
-            "0x000000000022D473030F116dDEE9F6B43aC78BA3".to_string(), // Permit2 address
+            "0x0000000000001fF3684f28c67538d4D072C22734".to_string(), // 0x AllowanceHolder
             "115792089237316195423570985008687907853269984665640564039457584007913129639935".to_string(), // max uint256
         ],
-        description: "Approve Permit2 to spend the sell token (max approval). Reads contract from sell_token register.".to_string(),
+        description: "Approve 0x AllowanceHolder to spend the sell token (max approval). Reads contract from sell_token register.".to_string(),
     });
 
-    map.insert("erc20_allowance_permit2".to_string(), Web3Preset {
+    map.insert("erc20_allowance_swap".to_string(), Web3Preset {
         abi: "erc20".to_string(),
         contracts: HashMap::new(),
         contract_register: Some("sell_token".to_string()),
@@ -336,9 +337,26 @@ fn default_web3_presets() -> HashMap<String, Web3Preset> {
         params_registers: vec!["wallet_address".to_string()],
         value_register: None,
         static_params: vec![
-            "0x000000000022D473030F116dDEE9F6B43aC78BA3".to_string(), // Permit2 address
+            "0x0000000000001fF3684f28c67538d4D072C22734".to_string(), // 0x AllowanceHolder
         ],
-        description: "Check Permit2 allowance for the sell token. Reads contract from sell_token register.".to_string(),
+        description: "Check AllowanceHolder allowance for the sell token. Reads contract from sell_token register.".to_string(),
+    });
+
+    map.insert("swap_execute".to_string(), Web3Preset {
+        abi: "0x_settler".to_string(),
+        contracts: HashMap::new(),
+        contract_register: Some("swap_contract".to_string()),
+        function: "exec".to_string(),
+        params_registers: vec![
+            "swap_param_0".to_string(),
+            "swap_param_1".to_string(),
+            "swap_param_2".to_string(),
+            "swap_param_3".to_string(),
+            "swap_param_4".to_string(),
+        ],
+        value_register: Some("swap_value".to_string()),
+        static_params: vec![],
+        description: "Execute 0x swap via AllowanceHolder.exec(). Use decode_calldata first to decode swap_quote into swap_contract, swap_param_0-4, swap_value registers.".to_string(),
     });
 
     map.insert("erc20_balance".to_string(), Web3Preset {

@@ -28,7 +28,7 @@ impl Web3PresetFunctionCallTool {
             "preset".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "Preset name. Available: weth_deposit, weth_withdraw, weth_balance, erc20_balance, erc20_approve_permit2, erc20_allowance_permit2, erc20_transfer, swap_execute.".to_string(),
+                description: "Preset name. Available: weth_deposit, weth_withdraw, weth_balance, erc20_balance, erc20_approve_swap, erc20_allowance_swap, erc20_transfer, swap_execute.".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -60,7 +60,7 @@ impl Web3PresetFunctionCallTool {
         Web3PresetFunctionCallTool {
             definition: ToolDefinition {
                 name: "web3_preset_function_call".to_string(),
-                description: "Execute a preset smart contract call. All parameters are read from registers — just specify the preset name and network. Available presets: weth_deposit, weth_withdraw, weth_balance, erc20_balance, erc20_approve_permit2, erc20_allowance_permit2, erc20_transfer, swap_execute.".to_string(),
+                description: "Execute a preset smart contract call. All parameters are read from registers — just specify the preset name and network. Available presets: weth_deposit, weth_withdraw, weth_balance, erc20_balance, erc20_approve_swap, erc20_allowance_swap, erc20_transfer, swap_execute.".to_string(),
                 input_schema: ToolInputSchema {
                     schema_type: "object".to_string(),
                     properties,

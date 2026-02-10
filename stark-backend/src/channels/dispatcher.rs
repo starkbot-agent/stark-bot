@@ -1937,11 +1937,22 @@ impl MessageDispatcher {
                     TaskAdvanceResult::AllTasksComplete => {
                         processed.orchestrator_complete = true;
                         processed.final_summary = Some(summary.clone());
+                        // If say_to_user was never called, use the summary as user-visible content
+                        // so it gets sent to Discord/Telegram/etc.
+                        if last_say_to_user_content.is_empty() {
+                            log::info!("[ORCHESTRATED_LOOP] No say_to_user called — using task_fully_completed summary as user response");
+                            *last_say_to_user_content = summary.clone();
+                        }
                     }
                     TaskAdvanceResult::InconsistentState => {
                         log::warn!("[ORCHESTRATED_LOOP] task_fully_completed: inconsistent task state, terminating");
                         processed.orchestrator_complete = true;
                         processed.final_summary = Some(summary.clone());
+                        // If say_to_user was never called, use the summary as user-visible content
+                        if last_say_to_user_content.is_empty() {
+                            log::info!("[ORCHESTRATED_LOOP] No say_to_user called — using task_fully_completed summary as user response");
+                            *last_say_to_user_content = summary.clone();
+                        }
                     }
                     TaskAdvanceResult::NextTaskStarted => {
                         // Continue loop for next task

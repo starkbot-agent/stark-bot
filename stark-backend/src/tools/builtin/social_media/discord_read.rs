@@ -302,7 +302,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let limit = params.limit.unwrap_or(50).min(100);
         let mut url = format!(
@@ -411,7 +411,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let limit = params.limit.unwrap_or(25).min(25);
 
@@ -488,7 +488,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!("https://discord.com/api/v10/channels/{}", channel_id);
 
@@ -548,7 +548,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!(
             "https://discord.com/api/v10/guilds/{}/members/{}",
@@ -623,7 +623,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!("https://discord.com/api/v10/guilds/{}/roles", guild_id);
 
@@ -688,7 +688,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!("https://discord.com/api/v10/channels/{}", channel_id);
 
@@ -765,7 +765,7 @@ impl DiscordReadTool {
             Ok(t) => t,
             Err(e) => return e,
         };
-        let client = reqwest::Client::new();
+        let client = crate::http::shared_client().clone();
 
         let url = format!("https://discord.com/api/v10/guilds/{}/channels", guild_id);
 
