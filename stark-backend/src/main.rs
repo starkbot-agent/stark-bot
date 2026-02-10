@@ -365,6 +365,7 @@ async fn restore_backup_data(
             None, // Don't restore keystore_url - it's infrastructure config
             None,
             Some(settings.guest_dashboard_enabled),
+            settings.theme_accent.as_deref(),
         ) {
             Ok(_) => log::info!("[Keystore] Restored bot settings"),
             Err(e) => log::warn!("[Keystore] Failed to restore bot settings: {}", e),

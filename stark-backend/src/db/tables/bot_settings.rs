@@ -13,7 +13,7 @@ impl Database {
         let conn = self.conn();
 
         let result = conn.query_row(
-            "SELECT id, bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, chat_session_memory_generation, guest_dashboard_enabled, created_at, updated_at FROM bot_settings LIMIT 1",
+            "SELECT id, bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, chat_session_memory_generation, guest_dashboard_enabled, theme_accent, created_at, updated_at FROM bot_settings LIMIT 1",
             [],
             |row| {
                 let web3_tx_confirmation: i64 = row.get(3)?;
@@ -25,8 +25,9 @@ impl Database {
                 let keystore_url: Option<String> = row.get(9)?;
                 let chat_session_memory_generation: i64 = row.get::<_, Option<i64>>(10)?.unwrap_or(1);
                 let guest_dashboard_enabled: i64 = row.get::<_, Option<i64>>(11)?.unwrap_or(0);
-                let created_at_str: String = row.get(12)?;
-                let updated_at_str: String = row.get(13)?;
+                let theme_accent: Option<String> = row.get(12)?;
+                let created_at_str: String = row.get(13)?;
+                let updated_at_str: String = row.get(14)?;
 
                 let custom_rpc_endpoints: Option<HashMap<String, String>> = custom_rpc_endpoints_json
                     .and_then(|json| serde_json::from_str(&json).ok());
@@ -44,6 +45,7 @@ impl Database {
                     keystore_url,
                     chat_session_memory_generation: chat_session_memory_generation != 0,
                     guest_dashboard_enabled: guest_dashboard_enabled != 0,
+                    theme_accent,
                     created_at: DateTime::parse_from_rfc3339(&created_at_str)
                         .unwrap()
                         .with_timezone(&Utc),
@@ -67,7 +69,7 @@ impl Database {
         bot_email: Option<&str>,
         web3_tx_requires_confirmation: Option<bool>,
     ) -> SqliteResult<BotSettings> {
-        self.update_bot_settings_full(bot_name, bot_email, web3_tx_requires_confirmation, None, None, None, None, None, None, None, None)
+        self.update_bot_settings_full(bot_name, bot_email, web3_tx_requires_confirmation, None, None, None, None, None, None, None, None, None)
     }
 
     /// Update bot settings with all fields including RPC config and keystore URL
@@ -84,6 +86,7 @@ impl Database {
         keystore_url: Option<&str>,
         chat_session_memory_generation: Option<bool>,
         guest_dashboard_enabled: Option<bool>,
+        theme_accent: Option<&str>,
     ) -> SqliteResult<BotSettings> {
         let conn = self.conn();
         let now = Utc::now().to_rfc3339();
@@ -167,6 +170,13 @@ impl Database {
                     rusqlite::params![if enabled { 1 } else { 0 }, &now],
                 )?;
             }
+            if let Some(accent) = theme_accent {
+                let accent_value: Option<&str> = if accent.is_empty() { None } else { Some(accent) };
+                conn.execute(
+                    "UPDATE bot_settings SET theme_accent = ?1, updated_at = ?2",
+                    rusqlite::params![accent_value, &now],
+                )?;
+            }
         } else {
             // Insert new
             let name = bot_name.unwrap_or("StarkBot");
@@ -182,9 +192,10 @@ impl Database {
             let keystore_url_value: Option<&str> = keystore_url.filter(|u| !u.is_empty());
             let session_memory = chat_session_memory_generation.unwrap_or(true);
             let guest_dashboard = guest_dashboard_enabled.unwrap_or(false);
+            let theme_accent_value: Option<&str> = theme_accent.filter(|u| !u.is_empty());
             conn.execute(
-                "INSERT INTO bot_settings (bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, chat_session_memory_generation, guest_dashboard_enabled, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                rusqlite::params![name, email, if confirmation { 1 } else { 0 }, provider, endpoints_json, max_iterations, if rogue_mode { 1 } else { 0 }, safe_mode_queries, keystore_url_value, if session_memory { 1 } else { 0 }, if guest_dashboard { 1 } else { 0 }, &now, &now],
+                "INSERT INTO bot_settings (bot_name, bot_email, web3_tx_requires_confirmation, rpc_provider, custom_rpc_endpoints, max_tool_iterations, rogue_mode_enabled, safe_mode_max_queries_per_10min, keystore_url, chat_session_memory_generation, guest_dashboard_enabled, theme_accent, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                rusqlite::params![name, email, if confirmation { 1 } else { 0 }, provider, endpoints_json, max_iterations, if rogue_mode { 1 } else { 0 }, safe_mode_queries, keystore_url_value, if session_memory { 1 } else { 0 }, if guest_dashboard { 1 } else { 0 }, theme_accent_value, &now, &now],
             )?;
         }
 

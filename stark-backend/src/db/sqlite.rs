@@ -370,6 +370,20 @@ impl Database {
             conn.execute("ALTER TABLE bot_settings ADD COLUMN guest_dashboard_enabled INTEGER NOT NULL DEFAULT 0", [])?;
         }
 
+        // Migration: Add theme_accent column to bot_settings if it doesn't exist
+        let has_theme_accent: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('bot_settings') WHERE name='theme_accent'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_theme_accent {
+            conn.execute("ALTER TABLE bot_settings ADD COLUMN theme_accent TEXT", [])?;
+        }
+
         // Initialize bot_settings with defaults if empty
         let bot_settings_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM bot_settings", [], |row| row.get(0))

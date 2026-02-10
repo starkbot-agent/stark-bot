@@ -22,7 +22,7 @@ export function Navbar() {
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#1a1a1a]/80 border-b border-white/10">
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3">
-          <img src="/starkbot-pfp.png" alt="StarkBot" className="w-10 h-10 rounded-xl object-cover" />
+          <img src="/starkbot.png" alt="StarkBot" className="w-10 h-10 rounded-xl object-cover" />
           <span className="text-xl font-bold">StarkBot</span>
         </Link>
         <div className="flex items-center gap-3">

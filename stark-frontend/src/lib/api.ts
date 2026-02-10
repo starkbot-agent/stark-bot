@@ -1183,6 +1183,7 @@ export interface BotSettings {
   keystore_url?: string;
   chat_session_memory_generation: boolean;
   guest_dashboard_enabled: boolean;
+  theme_accent?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1202,6 +1203,8 @@ export async function updateBotSettings(data: {
   safe_mode_max_queries_per_10min?: number;
   keystore_url?: string;
   chat_session_memory_generation?: boolean;
+  guest_dashboard_enabled?: boolean;
+  theme_accent?: string;
 }): Promise<BotSettings> {
   return apiFetch('/bot-settings', {
     method: 'PUT',

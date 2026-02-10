@@ -78,7 +78,7 @@ impl ApiKeyId {
             Self::TwitterConsumerSecret => Some(&["TWITTER_CONSUMER_SECRET", "TWITTER_API_SECRET"]),
             Self::TwitterAccessToken => Some(&["TWITTER_ACCESS_TOKEN"]),
             Self::TwitterAccessTokenSecret => Some(&["TWITTER_ACCESS_TOKEN_SECRET"]),
-            Self::RailwayToken => Some(&["RAILWAY_API_TOKEN", "RAILWAY_TOKEN"]),
+            Self::RailwayToken => Some(&["RAILWAY_API_TOKEN"]),
         }
     }
 
@@ -810,6 +810,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                 rogue_mode_enabled: settings.rogue_mode_enabled,
                 safe_mode_max_queries_per_10min: Some(settings.safe_mode_max_queries_per_10min),
                 guest_dashboard_enabled: settings.guest_dashboard_enabled,
+                theme_accent: settings.theme_accent.clone(),
             });
         }
         Err(e) => {
@@ -1543,6 +1544,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             None, // Don't restore keystore_url - it's infrastructure config
             None,
             Some(settings.guest_dashboard_enabled),
+            settings.theme_accent.as_deref(),
         ) {
             log::warn!("Failed to restore bot settings: {}", e);
         }

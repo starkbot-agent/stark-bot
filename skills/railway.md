@@ -1,7 +1,7 @@
 ---
 name: railway
 description: "Manage Railway infrastructure - deploy services, manage environment variables, and monitor deployments using the Railway CLI."
-version: 3.1.0
+version: 3.2.0
 author: starkbot
 homepage: https://railway.com
 metadata: {"requires_auth": true, "clawdbot":{"emoji":"🚂"}}
@@ -35,12 +35,7 @@ command: railway --version
 timeout: 30
 ```
 
-If not installed, install it:
-
-```tool:exec
-command: npm install -g @railway/cli
-timeout: 120
-```
+Railway CLI is pre-installed in the Docker container. If missing, report to admin.
 
 ---
 
@@ -168,6 +163,8 @@ This creates a project and links the current workspace to it.
 
 #### Step 3: Add service from GitHub repo
 
+**Option A: GitHub repo link (requires Railway GitHub App)**
+
 ```tool:exec
 command: railway add --repo OWNER/REPO
 timeout: 60
@@ -175,7 +172,25 @@ timeout: 60
 
 Replace `OWNER/REPO` with the GitHub repository (e.g. `ethereumdegen/x402-gif-machine`). Railway will automatically trigger an initial deployment.
 
-> **Prerequisite:** The Railway GitHub app must be installed on the target repo. If this fails, tell the user to authorize Railway at https://railway.com/account/github.
+**If this fails with "repo not found"**, the Railway GitHub App doesn't have access. Fall back to Option B.
+
+**Option B: Clone and deploy (no GitHub App needed)**
+
+Clone the repo locally and deploy with `railway up`:
+
+```tool:exec
+command: git clone https://github.com/OWNER/REPO.git /tmp/railway-deploy-REPO
+timeout: 120
+```
+
+Then link and deploy from the cloned directory:
+
+```tool:exec
+command: cd /tmp/railway-deploy-REPO && railway link --project PROJECT_ID --environment production && railway up --detach
+timeout: 300
+```
+
+> **Note:** Option B deploys a snapshot. It won't auto-deploy on new commits like Option A does. For auto-deploy, the user needs to configure the Railway GitHub App on their repo (GitHub → Settings → Applications → Railway → Configure).
 
 #### Step 4: Generate a public domain
 

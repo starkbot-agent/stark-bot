@@ -204,7 +204,7 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
   const isToolCall = role === 'tool_call' || (isToolMessage && content.includes('Tool Call'));
 
   const roleStyles: Record<MessageRole, string> = {
-    user: 'bg-stark-500 text-white',
+    user: 'bg-orange-500 text-black',
     assistant: 'bg-slate-800 text-slate-100',
     system: 'bg-slate-800/50 text-slate-300 border border-slate-700',
     error: 'bg-red-950/60 text-red-100 border border-red-900/50',

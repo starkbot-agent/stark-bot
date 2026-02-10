@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle, Copy, Check, Wallet, Brain } from 'lucide-react';
+import { Save, Bot, Server, Shield, Cloud, AlertTriangle, CheckCircle, Info, XCircle, Copy, Check, Wallet, Brain, Palette } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -33,9 +33,21 @@ export default function BotSettings() {
   const [walletAddress, setWalletAddress] = useState<string>('');
   const [walletMode, setWalletMode] = useState<string>('');
   const [walletCopied, setWalletCopied] = useState(false);
+  const [themeAccent, setThemeAccent] = useState(() => localStorage.getItem('theme-accent') || '');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleThemeChange = (value: string) => {
+    setThemeAccent(value);
+    if (value) {
+      localStorage.setItem('theme-accent', value);
+      document.documentElement.dataset.theme = value;
+    } else {
+      localStorage.removeItem('theme-accent');
+      delete document.documentElement.dataset.theme;
+    }
+  };
 
   useEffect(() => {
     loadSettings();
@@ -88,6 +100,16 @@ export default function BotSettings() {
       setKeystoreUrl(data.keystore_url || '');
       setChatSessionMemoryGeneration(data.chat_session_memory_generation ?? true);
       setGuestDashboardEnabled(data.guest_dashboard_enabled ?? false);
+      // Sync theme from backend (backend is source of truth, update localStorage to match)
+      const serverTheme = data.theme_accent || '';
+      setThemeAccent(serverTheme);
+      if (serverTheme) {
+        localStorage.setItem('theme-accent', serverTheme);
+        document.documentElement.dataset.theme = serverTheme;
+      } else {
+        localStorage.removeItem('theme-accent');
+        delete document.documentElement.dataset.theme;
+      }
       if (data.custom_rpc_endpoints) {
         setCustomRpcBase(data.custom_rpc_endpoints.base || '');
         setCustomRpcMainnet(data.custom_rpc_endpoints.mainnet || '');
@@ -130,6 +152,7 @@ export default function BotSettings() {
         keystore_url: keystoreUrl,
         chat_session_memory_generation: chatSessionMemoryGeneration,
         guest_dashboard_enabled: guestDashboardEnabled,
+        theme_accent: themeAccent || '',
       });
       setSettings(updated);
       setMessage({ type: 'success', text: 'Settings saved successfully' });
@@ -297,6 +320,36 @@ export default function BotSettings() {
               )}
               <p className="text-xs text-slate-500 mt-1">
                 The wallet address used by the bot for transactions. Configure in environment variables.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Theme Accent Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="w-5 h-5 text-stark-400" />
+              Theme Accent
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Accent Color
+              </label>
+              <select
+                value={themeAccent}
+                onChange={(e) => handleThemeChange(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:border-stark-500 focus:outline-none"
+              >
+                <option value="">Spark Orange (Default)</option>
+                <option value="blue">Future Blue</option>
+                <option value="white">Wicked White</option>
+                <option value="green">Circuit Green</option>
+              </select>
+              <p className="text-xs text-slate-500 mt-1">
+                Changes the accent color used throughout the dashboard. Stored locally in your browser.
               </p>
             </div>
           </CardContent>

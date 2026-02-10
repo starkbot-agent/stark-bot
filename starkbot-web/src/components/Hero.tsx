@@ -5,10 +5,19 @@ export function Hero() {
   return (
     <section className="pt-32 pb-20 px-6 relative">
       <div className="max-w-4xl mx-auto text-center">
-        {/* Mascot/Logo */}
+        {/* Mascot/Logo - flips to old logo on hover */}
         <div className="mb-8 animate-float">
-          <div className="w-32 h-32 mx-auto rounded-3xl overflow-hidden glow transform rotate-3 hover:rotate-0 transition-transform duration-500">
-            <img src="/starkbot-pfp.png" alt="StarkBot" className="w-full h-full object-cover" />
+          <div className="w-32 h-32 mx-auto [perspective:600px] group cursor-pointer">
+            <div className="relative w-full h-full transition-transform duration-700 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+              {/* Front - new logo */}
+              <div className="absolute inset-0 rounded-3xl overflow-hidden glow [backface-visibility:hidden]">
+                <img src="/starkbot-pfp.png" alt="StarkBot" className="w-full h-full object-cover" />
+              </div>
+              {/* Back - old logo */}
+              <div className="absolute inset-0 rounded-3xl overflow-hidden glow [backface-visibility:hidden] [transform:rotateY(180deg)]">
+                <img src="/starkbot.png" alt="StarkBot Classic" className="w-full h-full object-cover" />
+              </div>
+            </div>
           </div>
         </div>
 

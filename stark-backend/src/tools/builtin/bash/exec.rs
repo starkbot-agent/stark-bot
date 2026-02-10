@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -346,9 +347,13 @@ impl ExecTool {
         }
 
         // Also inject custom runtime API keys
+        // Skip keys that match a built-in ApiKeyId — those are already handled above.
         for name in context.list_api_key_names() {
             if env_vars.contains_key(&name) {
                 continue;
+            }
+            if ApiKeyId::from_str(&name).is_ok() {
+                continue; // built-in key, already injected via env_vars() mapping
             }
             if let Some(value) = context.get_api_key(&name) {
                 if !value.is_empty() {
@@ -553,9 +558,14 @@ impl Tool for ExecTool {
         }
 
         // Also inject custom runtime API keys as env vars
+        // Skip keys that match a built-in ApiKeyId — those are already handled
+        // by the loop above (possibly under different env var names).
         for name in context.list_api_key_names() {
             if available_env_vars.contains(&name) {
-                continue; // already set by built-in key above
+                continue;
+            }
+            if ApiKeyId::from_str(&name).is_ok() {
+                continue; // built-in key, already injected via env_vars() mapping
             }
             if let Some(value) = context.get_api_key(&name) {
                 if !value.is_empty() {

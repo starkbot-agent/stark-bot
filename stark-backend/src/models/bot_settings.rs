@@ -31,6 +31,8 @@ pub struct BotSettings {
     pub chat_session_memory_generation: bool,
     /// Whether unauthenticated users can view the guest dashboard
     pub guest_dashboard_enabled: bool,
+    /// Dashboard theme accent color (e.g. "blue"). None = default orange.
+    pub theme_accent: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -50,6 +52,7 @@ impl Default for BotSettings {
             keystore_url: None, // Uses default: https://keystore.defirelay.com
             chat_session_memory_generation: true,
             guest_dashboard_enabled: false,
+            theme_accent: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -71,4 +74,5 @@ pub struct UpdateBotSettingsRequest {
     pub keystore_url: Option<String>,
     pub chat_session_memory_generation: Option<bool>,
     pub guest_dashboard_enabled: Option<bool>,
+    pub theme_accent: Option<String>,
 }

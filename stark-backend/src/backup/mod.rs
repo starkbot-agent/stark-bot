@@ -214,6 +214,7 @@ pub struct BotSettingsEntry {
     pub rogue_mode_enabled: bool,
     pub safe_mode_max_queries_per_10min: Option<i32>,
     pub guest_dashboard_enabled: bool,
+    pub theme_accent: Option<String>,
 }
 
 /// Channel setting entry in backup
