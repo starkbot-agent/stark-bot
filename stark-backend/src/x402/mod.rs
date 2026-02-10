@@ -16,6 +16,7 @@ mod client;
 mod signer;
 mod evm_rpc;
 pub mod erc20;
+pub mod payment_limits;
 
 pub use types::*;
 pub use client::{X402Client, X402Response, is_x402_endpoint};

@@ -3,12 +3,18 @@
         display_name: "kimi2.defirelay.com",
         endpoint: "https://kimi2.defirelay.com/api/v1/chat/completions",
         model_archetype: "kimi",
-        x402_cost: Some(5000),
+        x402_cost: Some(10000),
     ),
     "kimi-turbo": (
         display_name: "kimi2turbo.defirelay.com",
         endpoint: "https://kimi2turbo.defirelay.com/api/v1/chat/completions",
         model_archetype: "kimi",
-        x402_cost: Some(2500),
+        x402_cost: Some(5000),
+    ),
+    "gpt5-mini": (
+        display_name: "openai-gpt5-mini.defirelay.com",
+        endpoint: "https://openai-gpt5-mini.defirelay.com/api/v1/chat/completions",
+        model_archetype: "openai",
+        x402_cost: Some(7500),
     ),
 }

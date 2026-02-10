@@ -1704,3 +1704,31 @@ export async function getGuestMindGraph(): Promise<MindGraphResponse> {
   }
   return response.json();
 }
+
+// x402 Payment Limits API
+export interface X402PaymentLimit {
+  asset: string;
+  max_amount: string;
+  decimals: number;
+  display_name: string;
+}
+
+export interface X402PaymentLimitsResponse {
+  limits: X402PaymentLimit[];
+}
+
+export async function getX402PaymentLimits(): Promise<X402PaymentLimitsResponse> {
+  return apiFetch('/x402-limits');
+}
+
+export async function updateX402PaymentLimit(data: {
+  asset: string;
+  max_amount: string;
+  decimals?: number;
+  display_name?: string;
+}): Promise<X402PaymentLimit> {
+  return apiFetch('/x402-limits', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}

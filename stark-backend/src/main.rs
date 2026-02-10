@@ -540,6 +540,22 @@ async fn restore_backup_data(
         }
     }
 
+    // Restore x402 payment limits
+    let mut restored_x402_limits = 0;
+    for limit in &backup_data.x402_payment_limits {
+        match db.set_x402_payment_limit(&limit.asset, &limit.max_amount, limit.decimals, &limit.display_name) {
+            Ok(_) => {
+                // Also update the in-memory global
+                crate::x402::payment_limits::set_limit(&limit.asset, &limit.max_amount, limit.decimals, &limit.display_name);
+                restored_x402_limits += 1;
+            }
+            Err(e) => log::warn!("[Keystore] Failed to restore x402 payment limit for {}: {}", limit.asset, e),
+        }
+    }
+    if restored_x402_limits > 0 {
+        log::info!("[Keystore] Restored {} x402 payment limits", restored_x402_limits);
+    }
+
     log::info!("[Keystore] Restore complete");
     Ok((restored_keys, restored_nodes))
 }
@@ -579,6 +595,8 @@ async fn main() -> std::io::Result<()> {
     tools::rpc_config::load_rpc_providers(config_dir);
     log::info!("Loading AI endpoint presets from config directory");
     ai_endpoint_config::load_ai_endpoints(config_dir);
+    log::info!("Loading x402 payment limit defaults from config directory");
+    x402::payment_limits::load_defaults(config_dir);
 
     let mut config = Config::from_env();
     let port = config.port;
@@ -592,6 +610,19 @@ async fn main() -> std::io::Result<()> {
     log::info!("Initializing database at {}", config.database_url);
     let db = Database::new(&config.database_url).expect("Failed to initialize database");
     let db = Arc::new(db);
+
+    // Override x402 payment limit defaults with any user-configured values from DB
+    match db.get_all_x402_payment_limits() {
+        Ok(limits) => {
+            for l in &limits {
+                x402::payment_limits::set_limit(&l.asset, &l.max_amount, l.decimals, &l.display_name);
+            }
+            if !limits.is_empty() {
+                log::info!("Loaded {} x402 payment limits from database", limits.len());
+            }
+        }
+        Err(e) => log::warn!("Failed to load x402 payment limits from DB: {}", e),
+    }
 
     // Initialize keystore URL (must be before auto-retrieve)
     // Priority: 1. bot_settings.keystore_url, 2. KEYSTORE_URL env var, 3. default
@@ -862,6 +893,7 @@ async fn main() -> std::io::Result<()> {
             .configure(controllers::mindmap::config)
             .configure(controllers::memory::config)
             .configure(controllers::well_known::config)
+            .configure(controllers::x402_limits::config)
             // WebSocket Gateway route (same port as HTTP, required for single-port platforms)
             .route("/ws", web::get().to(gateway::actix_ws::ws_handler));
 

@@ -9,6 +9,7 @@
 pub mod claude;
 pub mod kimi;
 pub mod llama;
+pub mod openai;
 
 use crate::tools::ToolDefinition;
 use serde::{Deserialize, Serialize};
@@ -109,6 +110,7 @@ impl ArchetypeRegistry {
         // Register default archetypes
         registry.register(Box::new(llama::LlamaArchetype::new()));
         registry.register(Box::new(kimi::KimiArchetype::new()));
+        registry.register(Box::new(openai::OpenAIArchetype::new()));
         registry.register(Box::new(claude::ClaudeArchetype::new()));
 
         registry

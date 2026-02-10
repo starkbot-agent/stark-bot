@@ -26,7 +26,7 @@ impl Default for AgentSettings {
         let now = Utc::now();
         Self {
             id: 0,
-            endpoint: "https://kimi.defirelay.com/api/v1/chat/completions".to_string(),
+            endpoint: "https://kimi2turbo.defirelay.com/api/v1/chat/completions".to_string(),
             model_archetype: "kimi".to_string(),
             max_response_tokens: 40000,
             max_context_tokens: DEFAULT_CONTEXT_TOKENS,

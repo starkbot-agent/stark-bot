@@ -17,7 +17,7 @@ use std::time::Duration;
 pub struct OpenAIClient {
     client: Client,
     endpoint: String,
-    model: String,
+    model: Option<String>,
     max_tokens: u32,
     x402_client: Option<Arc<X402Client>>,
     /// Optional broadcaster for emitting retry events
@@ -28,7 +28,8 @@ pub struct OpenAIClient {
 
 #[derive(Debug, Serialize)]
 struct OpenAICompletionRequest {
-    model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
     messages: Vec<OpenAIMessage>,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -214,16 +215,24 @@ impl OpenAIClient {
             None
         };
 
-        // Determine model with smart defaults
+        // Determine model: defirelay endpoints omit model (relay picks its own default)
         let effective_model = match model {
-            Some(m) if !m.is_empty() => m.to_string(),
-            _ => {
-                if endpoint_url.contains("openai.com") {
-                    "gpt-4o".to_string()
-                } else if endpoint_url.contains("kimi") || endpoint_url.contains("moonshot") {
-                    "moonshot-v1-32k".to_string()
+            Some(m) if !m.is_empty() => {
+                if endpoint_url.contains("defirelay.com") {
+                    None // relay handles model selection
                 } else {
-                    "default".to_string()
+                    Some(m.to_string())
+                }
+            }
+            _ => {
+                if endpoint_url.contains("defirelay.com") {
+                    None // relay handles model selection
+                } else if endpoint_url.contains("openai.com") {
+                    Some("gpt-4o".to_string())
+                } else if endpoint_url.contains("kimi") || endpoint_url.contains("moonshot") {
+                    Some("moonshot-v1-32k".to_string())
+                } else {
+                    Some("default".to_string())
                 }
             }
         };
@@ -295,16 +304,20 @@ impl OpenAIClient {
             None
         };
 
-        // Determine model with smart defaults based on endpoint
+        // Determine model: defirelay endpoints omit model (relay picks its own default)
         let model_name = match model {
-            Some(m) if !m.is_empty() => m.to_string(),
-            _ => {
-                // Use endpoint-specific defaults for known services
+            Some(m) if !m.is_empty() => {
                 if endpoint_url.contains("defirelay.com") {
-                    // defirelay endpoints use "default" as model name
-                    "default".to_string()
+                    None // relay handles model selection
                 } else {
-                    "gpt-4o".to_string()
+                    Some(m.to_string())
+                }
+            }
+            _ => {
+                if endpoint_url.contains("defirelay.com") {
+                    None // relay handles model selection
+                } else {
+                    Some("gpt-4o".to_string())
                 }
             }
         };
@@ -436,7 +449,7 @@ impl OpenAIClient {
         log::info!(
             "[OPENAI] Sending request to {} with model {} and {} tools (x402: {})",
             self.endpoint,
-            self.model,
+            self.model.as_deref().unwrap_or("(relay default)"),
             openai_tools.as_ref().map(|t| t.len()).unwrap_or(0),
             self.x402_client.is_some()
         );
@@ -759,7 +772,7 @@ impl OpenAIClient {
         log::info!(
             "[OPENAI] Streaming request to {} with model {} and {} tools",
             self.endpoint,
-            self.model,
+            self.model.as_deref().unwrap_or("(relay default)"),
             openai_tools.as_ref().map(|t| t.len()).unwrap_or(0),
         );
 

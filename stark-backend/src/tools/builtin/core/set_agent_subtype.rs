@@ -116,7 +116,7 @@ impl SetAgentSubtypeTool {
                  • test — Run tests, detect framework, and analyze failures\n\n\
                  Deployment & Infrastructure:\n\
                  • vercel — Deploy and manage projects on Vercel\n\
-                 • cloudflare — Manage Cloudflare Workers, DNS, Pages, KV\n\
+                 • cloudflare_dns — Manage Cloudflare DNS records (all types, zones, search, bulk ops)\n\
                  • railway — Deploy and manage services on Railway\n\
                  • deploy-github — Deploy via GitHub Actions CI/CD\n\n\
                  👉 Pick the matching skill and follow its instructions.\n\n\

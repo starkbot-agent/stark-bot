@@ -7,6 +7,7 @@ use crate::backup::{
     AgentIdentityEntry, AgentSettingsEntry, ApiKeyEntry, BackupData, BotSettingsEntry,
     ChannelEntry, ChannelSettingEntry, CronJobEntry, DiscordRegistrationEntry,
     HeartbeatConfigEntry, MindConnectionEntry, MindNodeEntry, SkillEntry, SkillScriptEntry,
+    X402PaymentLimitEntry,
 };
 use crate::db::tables::mind_nodes::{CreateMindNodeRequest, UpdateMindNodeRequest};
 use crate::keystore_client::KEYSTORE_CLIENT;
@@ -1061,6 +1062,24 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
         }
     }
 
+    // Get x402 payment limits
+    match state.db.get_all_x402_payment_limits() {
+        Ok(limits) => {
+            backup.x402_payment_limits = limits
+                .iter()
+                .map(|l| X402PaymentLimitEntry {
+                    asset: l.asset.clone(),
+                    max_amount: l.max_amount.clone(),
+                    decimals: l.decimals,
+                    display_name: l.display_name.clone(),
+                })
+                .collect();
+        }
+        Err(e) => {
+            log::warn!("Failed to get x402 payment limits for backup: {}", e);
+        }
+    }
+
     // Check if there's anything to backup
     if backup.api_keys.is_empty() && backup.mind_map_nodes.is_empty() && backup.cron_jobs.is_empty() && backup.bot_settings.is_none() && backup.heartbeat_config.is_none() && backup.channel_settings.is_empty() && backup.channels.is_empty() && backup.soul_document.is_none() && backup.identity_document.is_none() && backup.discord_registrations.is_empty() && backup.skills.is_empty() && backup.agent_settings.is_empty() && backup.agent_identity.is_none() {
         return HttpResponse::BadRequest().json(BackupResponse {
@@ -1885,6 +1904,21 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
                 }
             }
         }
+    }
+
+    // Restore x402 payment limits
+    let mut restored_x402_limits = 0;
+    for limit in &backup_data.x402_payment_limits {
+        match state.db.set_x402_payment_limit(&limit.asset, &limit.max_amount, limit.decimals, &limit.display_name) {
+            Ok(_) => {
+                crate::x402::payment_limits::set_limit(&limit.asset, &limit.max_amount, limit.decimals, &limit.display_name);
+                restored_x402_limits += 1;
+            }
+            Err(e) => log::warn!("Failed to restore x402 payment limit for {}: {}", limit.asset, e),
+        }
+    }
+    if restored_x402_limits > 0 {
+        log::info!("Restored {} x402 payment limits", restored_x402_limits);
     }
 
     // Auto-start channels with auto_start_on_boot setting enabled

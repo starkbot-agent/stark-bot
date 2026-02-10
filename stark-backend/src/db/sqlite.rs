@@ -869,6 +869,20 @@ impl Database {
             [],
         )?;
 
+        // x402 payment limits — per-call maximums per token
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS x402_payment_limits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                asset TEXT NOT NULL UNIQUE,
+                max_amount TEXT NOT NULL,
+                decimals INTEGER NOT NULL DEFAULT 6,
+                display_name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+            [],
+        )?;
+
         // Agent identity (our EIP-8004 registration — minimal: just the NFT ID + registry + chain)
         // Everything else (name, description, URI, wallet, etc.) is fetched dynamically from chain.
         conn.execute(

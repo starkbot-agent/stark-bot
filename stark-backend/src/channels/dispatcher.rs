@@ -55,6 +55,10 @@ enum TaskAdvanceResult {
 struct BatchState {
     define_tasks_replaced_queue: bool,
     auto_completed_task: bool,
+    /// Tracks whether say_to_user was already broadcast in this batch.
+    /// Prevents duplicate messages when AI calls say_to_user multiple times
+    /// in a single response.
+    had_say_to_user: bool,
 }
 
 impl BatchState {
@@ -62,6 +66,7 @@ impl BatchState {
         Self {
             define_tasks_replaced_queue: false,
             auto_completed_task: false,
+            had_say_to_user: false,
         }
     }
 }
@@ -1934,25 +1939,33 @@ impl MessageDispatcher {
         }
 
         // Capture say_to_user content for session memory
+        // Skip duplicate say_to_user calls within the same batch — AI sometimes returns
+        // multiple say_to_user calls in a single response, causing duplicate messages.
+        let is_duplicate_say_to_user = tool_name == "say_to_user" && result.success && batch_state.had_say_to_user;
         if tool_name == "say_to_user" && result.success {
-            *last_say_to_user_content = result.content.clone();
-
-            // Also store as an Assistant message so the content survives in conversation
-            // context for follow-up queries. ToolResult messages are filtered out when
-            // building AI context, so without this the AI loses all knowledge of what
-            // it communicated to the user in previous turns.
-            if let Err(e) = self.db.add_session_message(
-                session_id,
-                DbMessageRole::Assistant,
-                &result.content,
-                None,
-                None,
-                None,
-                Some(estimate_tokens(&result.content)),
-            ) {
-                log::error!("[ORCHESTRATED_LOOP] Failed to store say_to_user as assistant message: {}", e);
+            if is_duplicate_say_to_user {
+                log::warn!("[ORCHESTRATED_LOOP] Skipping duplicate say_to_user in same batch (already broadcast)");
             } else {
-                self.context_manager.update_context_tokens(session_id, estimate_tokens(&result.content));
+                *last_say_to_user_content = result.content.clone();
+                batch_state.had_say_to_user = true;
+
+                // Also store as an Assistant message so the content survives in conversation
+                // context for follow-up queries. ToolResult messages are filtered out when
+                // building AI context, so without this the AI loses all knowledge of what
+                // it communicated to the user in previous turns.
+                if let Err(e) = self.db.add_session_message(
+                    session_id,
+                    DbMessageRole::Assistant,
+                    &result.content,
+                    None,
+                    None,
+                    None,
+                    Some(estimate_tokens(&result.content)),
+                ) {
+                    log::error!("[ORCHESTRATED_LOOP] Failed to store say_to_user as assistant message: {}", e);
+                } else {
+                    self.context_manager.update_context_tokens(session_id, estimate_tokens(&result.content));
+                }
             }
         }
 
@@ -2068,15 +2081,19 @@ impl MessageDispatcher {
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
 
-        self.broadcaster.broadcast(GatewayEvent::tool_result(
-            original_message.channel_id,
-            Some(&original_message.chat_id),
-            tool_name,
-            result.success,
-            duration_ms,
-            &result.content,
-            is_safe_mode,
-        ));
+        // Skip broadcasting duplicate say_to_user events — the first one in the batch
+        // already delivered the message to the user via Discord/Telegram/WebSocket.
+        if !is_duplicate_say_to_user {
+            self.broadcaster.broadcast(GatewayEvent::tool_result(
+                original_message.channel_id,
+                Some(&original_message.chat_id),
+                tool_name,
+                result.success,
+                duration_ms,
+                &result.content,
+                is_safe_mode,
+            ));
+        }
 
         // Execute AfterToolCall hooks
         if let Some(hook_manager) = &self.hook_manager {
@@ -2094,23 +2111,25 @@ impl MessageDispatcher {
             }
         }
 
-        // Save tool result to session
-        let tool_result_content = format!(
-            "**{}:** {}\n{}",
-            if result.success { "Result" } else { "Error" },
-            tool_name,
-            result.content
-        );
-        if let Err(e) = self.db.add_session_message(
-            session_id,
-            DbMessageRole::ToolResult,
-            &tool_result_content,
-            None,
-            Some(tool_name),
-            None,
-            None,
-        ) {
-            log::error!("Failed to save tool result to session: {}", e);
+        // Save tool result to session (skip duplicate say_to_user to avoid polluting transcript)
+        if !is_duplicate_say_to_user {
+            let tool_result_content = format!(
+                "**{}:** {}\n{}",
+                if result.success { "Result" } else { "Error" },
+                tool_name,
+                result.content
+            );
+            if let Err(e) = self.db.add_session_message(
+                session_id,
+                DbMessageRole::ToolResult,
+                &tool_result_content,
+                None,
+                Some(tool_name),
+                None,
+                None,
+            ) {
+                log::error!("Failed to save tool result to session: {}", e);
+            }
         }
 
         // Broadcast task list update after any orchestrator tool processing

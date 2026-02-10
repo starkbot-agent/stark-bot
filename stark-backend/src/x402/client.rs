@@ -149,6 +149,12 @@ impl X402Client {
         let requirements = payment_required.accepts.first()
             .ok_or_else(|| "No payment options in 402 response".to_string())?;
 
+        // Check payment limit before signing
+        super::payment_limits::check_payment_limit(
+            &requirements.asset,
+            &requirements.max_amount_required,
+        )?;
+
         // Create payment info before signing
         let payment_info = X402PaymentInfo::from_requirements(requirements);
 

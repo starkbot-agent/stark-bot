@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Wallet, Clock, CheckCircle, XCircle, ExternalLink, AlertCircle, Loader2, History, ListTodo } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Wallet, Clock, CheckCircle, XCircle, ExternalLink, AlertCircle, Loader2, History, ListTodo, Shield } from 'lucide-react';
 import Card, { CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { useApi } from '@/hooks/useApi';
-import type { QueuedTransactionsResponse, QueuedTransactionInfo, BroadcastedTransactionsResponse, BroadcastedTransactionInfo } from '@/lib/api';
-import { getBroadcastedTransactions } from '@/lib/api';
+import type { QueuedTransactionsResponse, QueuedTransactionInfo, BroadcastedTransactionsResponse, BroadcastedTransactionInfo, X402PaymentLimit } from '@/lib/api';
+import { getBroadcastedTransactions, getX402PaymentLimits, updateX402PaymentLimit } from '@/lib/api';
 import TxQueueConfirmationModal, { TxQueueTransaction } from '@/components/chat/TxQueueConfirmationModal';
 
 type StatusFilter = 'all' | 'pending' | 'broadcast' | 'confirmed' | 'failed';
@@ -24,11 +24,35 @@ export default function CryptoTransactions() {
   const [historyData, setHistoryData] = useState<BroadcastedTransactionsResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // x402 Payment Limits state
+  const [paymentLimits, setPaymentLimits] = useState<X402PaymentLimit[]>([]);
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [editingLimit, setEditingLimit] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [limitSaving, setLimitSaving] = useState(false);
+
   const statusParam = filter === 'all' ? undefined : filter;
 
   const { data, isLoading, refetch } = useApi<QueuedTransactionsResponse>(
     `/tx-queue${statusParam ? `?status=${statusParam}` : ''}`
   );
+
+  // Fetch x402 payment limits
+  const fetchPaymentLimits = useCallback(async () => {
+    setLimitsLoading(true);
+    try {
+      const result = await getX402PaymentLimits();
+      setPaymentLimits(result.limits);
+    } catch (e) {
+      console.error('Failed to fetch x402 payment limits:', e);
+    } finally {
+      setLimitsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaymentLimits();
+  }, [fetchPaymentLimits]);
 
   // Fetch history data
   const fetchHistory = async () => {
@@ -70,6 +94,55 @@ export default function CryptoTransactions() {
   const confirmedCount = data?.confirmed_count ?? 0;
   const failedCount = data?.failed_count ?? 0;
   const historyTransactions = historyData?.transactions ?? [];
+
+  const formatTokenAmount = (raw: string, decimals: number): string => {
+    try {
+      const value = BigInt(raw);
+      const divisor = BigInt(10 ** decimals);
+      const whole = value / divisor;
+      const frac = value % divisor;
+      if (frac === 0n) return whole.toString();
+      const fracStr = frac.toString().padStart(decimals, '0').replace(/0+$/, '');
+      return `${whole}.${fracStr}`;
+    } catch {
+      return raw;
+    }
+  };
+
+  const parseTokenAmount = (formatted: string, decimals: number): string => {
+    try {
+      const parts = formatted.split('.');
+      const whole = BigInt(parts[0] || '0');
+      let frac = 0n;
+      if (parts[1]) {
+        const fracStr = parts[1].slice(0, decimals).padEnd(decimals, '0');
+        frac = BigInt(fracStr);
+      }
+      return (whole * BigInt(10 ** decimals) + frac).toString();
+    } catch {
+      return '0';
+    }
+  };
+
+  const handleSaveLimit = async (limit: X402PaymentLimit) => {
+    setLimitSaving(true);
+    try {
+      const newRaw = parseTokenAmount(editValue, limit.decimals);
+      await updateX402PaymentLimit({
+        asset: limit.asset,
+        max_amount: newRaw,
+        decimals: limit.decimals,
+        display_name: limit.display_name,
+      });
+      setEditingLimit(null);
+      setEditValue('');
+      await fetchPaymentLimits();
+    } catch (e) {
+      console.error('Failed to save payment limit:', e);
+    } finally {
+      setLimitSaving(false);
+    }
+  };
 
   const formatDate = (dateStr: string) => {
     try {
@@ -575,6 +648,101 @@ export default function CryptoTransactions() {
         channelId={0}
         transaction={selectedTx}
       />
+
+      {/* x402 Payment Limits Section */}
+      <div className="mt-12 mb-8">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 rounded-lg bg-amber-500/20">
+            <Shield className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-white">x402 Payment Limits</h2>
+            <p className="text-sm text-slate-400">Maximum amount allowed per x402 payment call</p>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent>
+            {limitsLoading ? (
+              <div className="text-center py-6 text-slate-400">Loading limits...</div>
+            ) : paymentLimits.length === 0 ? (
+              <div className="text-center py-6 text-slate-400">No payment limits configured.</div>
+            ) : (
+              <div className="space-y-4">
+                {paymentLimits.map((limit) => (
+                  <div
+                    key={limit.asset}
+                    className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg border border-slate-700"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-2 py-1 bg-stark-500/20 text-stark-400 rounded text-xs font-bold">
+                        {limit.display_name}
+                      </span>
+                      <div>
+                        <p className="text-sm text-slate-400">Max per call</p>
+                        {editingLimit === limit.asset ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              type="text"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              className="bg-slate-700 border border-slate-600 rounded px-2 py-1 text-white text-sm w-40 focus:outline-none focus:border-stark-400"
+                              placeholder="e.g. 1.0"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveLimit(limit);
+                                if (e.key === 'Escape') { setEditingLimit(null); setEditValue(''); }
+                              }}
+                            />
+                            <span className="text-slate-400 text-sm">{limit.display_name}</span>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => handleSaveLimit(limit)}
+                              disabled={limitSaving}
+                            >
+                              {limitSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => { setEditingLimit(null); setEditValue(''); }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-white font-mono text-lg">
+                            {formatTokenAmount(limit.max_amount, limit.decimals)} {limit.display_name}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {editingLimit !== limit.asset && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setEditingLimit(limit.asset);
+                          setEditValue(formatTokenAmount(limit.max_amount, limit.decimals));
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="mt-4 text-sm text-slate-500">
+          <p>These limits control the maximum amount StarkBot can spend per individual x402 payment.</p>
+          <p>If an x402 endpoint requests more than the configured limit, the payment will be blocked.</p>
+          <p className="mt-1">Limits are backed up to cloud storage automatically.</p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -321,6 +321,14 @@ impl Tool for X402AgentInvokeTool {
             payment_option.network
         );
 
+        // Check payment limit before signing
+        if let Err(e) = crate::x402::payment_limits::check_payment_limit(
+            &payment_option.asset,
+            &payment_option.max_amount_required,
+        ) {
+            return ToolResult::error(e);
+        }
+
         // Get signer
         let signer = match self.get_signer(context) {
             Ok(s) => s,

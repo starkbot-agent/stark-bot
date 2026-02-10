@@ -65,6 +65,8 @@ pub struct BackupData {
     /// On-chain agent identity registration (NFT token ID, tx hash, registry, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_identity: Option<AgentIdentityEntry>,
+    /// x402 payment limits (per-call max amounts per token)
+    pub x402_payment_limits: Vec<X402PaymentLimitEntry>,
 }
 
 /// Manual Default because DateTime<Utc> doesn't derive Default
@@ -89,6 +91,7 @@ impl Default for BackupData {
             skills: Vec::new(),
             agent_settings: Vec::new(),
             agent_identity: None,
+            x402_payment_limits: Vec::new(),
         }
     }
 }
@@ -121,6 +124,7 @@ impl BackupData {
             + self.skills.len()
             + self.agent_settings.len()
             + if self.agent_identity.is_some() { 1 } else { 0 }
+            + self.x402_payment_limits.len()
     }
 }
 
@@ -303,6 +307,16 @@ pub struct AgentIdentityEntry {
     pub agent_id: i64,
     pub agent_registry: String,
     pub chain_id: i64,
+}
+
+/// x402 payment limit entry in backup
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct X402PaymentLimitEntry {
+    pub asset: String,
+    pub max_amount: String,
+    pub decimals: u8,
+    pub display_name: String,
 }
 
 /// Options for what to include in a backup

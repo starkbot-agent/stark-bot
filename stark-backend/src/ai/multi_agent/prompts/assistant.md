@@ -81,7 +81,7 @@ When you call a tool:
 | Toolbox | Key Skills (load with `use_skill`) |
 |---------|-------------------------------------|
 | `finance` | swap, transfer, token_price, local_wallet, weth, bankr, polymarket_trading, aave, pendle, bridge_usdc, dexscreener, geckoterminal, x402_payment |
-| `code_engineer` | plan, commit, test, debug, code-review, github, vercel, cloudflare, railway, create-project |
+| `code_engineer` | plan, commit, test, debug, code-review, github, vercel, cloudflare_dns, railway, create-project |
 | `secretary` | moltx, moltbook, twitter, discord, 4claw, x402book, journal, scheduling |
 
 **After selecting a toolbox:** Core tools become available (read_file, list_files, web_fetch, use_skill) plus toolbox-specific low-level tools. But **always check for a matching skill first** — skills provide the correct workflow.
