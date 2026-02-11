@@ -247,9 +247,7 @@ impl Tool for ProcessStatusTool {
         }
     }
 
-    fn safety_level(&self) -> ToolSafetyLevel {
-        ToolSafetyLevel::ReadOnly
-    }
+    // Standard — this tool can kill processes, so it's not read-only
 }
 
 #[cfg(test)]
