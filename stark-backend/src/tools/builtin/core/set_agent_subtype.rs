@@ -4,6 +4,7 @@ use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
 };
+use crate::tools::ToolSafetyLevel;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -122,7 +123,13 @@ impl SetAgentSubtypeTool {
                  • deploy-github — Deploy via GitHub Actions CI/CD\n\n\
                  👉 Pick the matching skill and follow its instructions.\n\n\
                  ## Low-level tools (only when no skill fits)\n\
-                 grep, glob, edit_file, write_file, delete_file, rename_file, git, exec"
+                 grep, glob, edit_file, write_file, delete_file, rename_file, git, exec,\n\
+                 read_symbol, verify_changes, index_project\n\n\
+                 ## Smart Workflow\n\
+                 • Use `index_project` first on unfamiliar codebases to understand the structure.\n\
+                 • Use `read_symbol` to inspect specific functions/structs without reading entire files.\n\
+                 • After editing code, ALWAYS use `verify_changes` to confirm it compiles.\n\
+                 • Use `verify_changes` with checks='test' to run the full test suite."
                     .to_string()
             }
             AgentSubtype::Secretary => {
@@ -201,6 +208,10 @@ impl Tool for SetAgentSubtypeTool {
                 .collect::<Vec<_>>(),
             "allowed_skill_tags": subtype.allowed_skill_tags(),
         }))
+    }
+
+    fn safety_level(&self) -> ToolSafetyLevel {
+        ToolSafetyLevel::SafeMode
     }
 }
 

@@ -12,7 +12,7 @@ pub use register::{PresetOrCustom, RegisterStore};
 pub use registry::{Tool, ToolRegistry};
 pub use types::{
     ChannelOutputType, PropertySchema, ToolConfig, ToolContext, ToolDefinition, ToolExecution,
-    ToolGroup, ToolInputSchema, ToolProfile, ToolResult, SAFE_MODE_ALLOW_LIST,
+    ToolGroup, ToolInputSchema, ToolProfile, ToolResult, ToolSafetyLevel, SAFE_MODE_ALLOW_LIST,
 };
 
 use std::sync::Arc;
@@ -84,11 +84,15 @@ fn register_all_tools(registry: &mut ToolRegistry) {
     registry.register(Arc::new(builtin::GlobTool::new()));
     registry.register(Arc::new(builtin::GitTool::new()));
     registry.register(Arc::new(builtin::GithubUserTool::new()));
+    registry.register(Arc::new(builtin::ReadSymbolTool::new()));
 
     // Advanced development tools (scoped commits, deployment, PR quality)
     registry.register(Arc::new(builtin::CommitterTool::new()));
     registry.register(Arc::new(builtin::DeployTool::new()));
     registry.register(Arc::new(builtin::PrQualityTool::new()));
+    // CodeEngineer boost: project indexing and verification
+    registry.register(Arc::new(builtin::VerifyChangesTool::new()));
+    registry.register(Arc::new(builtin::IndexProjectTool::new()));
 
     // Exec tool (Development mode)
     registry.register(Arc::new(builtin::ExecTool::new()));

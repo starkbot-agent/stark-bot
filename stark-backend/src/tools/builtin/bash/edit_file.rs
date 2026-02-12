@@ -109,6 +109,82 @@ impl EditFileTool {
         diff
     }
 
+    /// Find the closest matching substring in the file content
+    /// Returns (matched_text, line_number, similarity_percentage)
+    fn find_closest_match(content: &str, needle: &str) -> Option<(String, usize, usize)> {
+        let needle_lines: Vec<&str> = needle.lines().collect();
+        if needle_lines.is_empty() {
+            return None;
+        }
+
+        let content_lines: Vec<&str> = content.lines().collect();
+        let needle_len = needle_lines.len();
+
+        if content_lines.is_empty() || needle_len == 0 {
+            return None;
+        }
+
+        let mut best_score = 0usize;
+        let mut best_start = 0usize;
+        let mut best_len = needle_len;
+
+        // Slide a window of needle_len lines over the content
+        let search_len = needle_len.min(content_lines.len());
+        for window_size in [search_len, search_len + 1, search_len.saturating_sub(1)] {
+            if window_size == 0 || window_size > content_lines.len() {
+                continue;
+            }
+            for start in 0..=(content_lines.len() - window_size) {
+                let window = &content_lines[start..start + window_size];
+                let score = Self::line_similarity(&needle_lines, window);
+                if score > best_score {
+                    best_score = score;
+                    best_start = start;
+                    best_len = window_size;
+                }
+            }
+        }
+
+        // Only return if similarity is above 40%
+        let max_possible = needle_lines.iter().map(|l| l.len().max(1)).sum::<usize>();
+        let percentage = if max_possible > 0 {
+            (best_score * 100) / max_possible
+        } else {
+            0
+        };
+
+        if percentage >= 40 {
+            let matched = content_lines[best_start..best_start + best_len].join("\n");
+            // Truncate if too long
+            let display = if matched.len() > 500 {
+                format!("{}...", &matched[..500])
+            } else {
+                matched
+            };
+            Some((display, best_start + 1, percentage))
+        } else {
+            None
+        }
+    }
+
+    /// Compute similarity score between two sets of lines
+    fn line_similarity(a: &[&str], b: &[&str]) -> usize {
+        let mut score = 0usize;
+        let pairs = a.len().min(b.len());
+        for i in 0..pairs {
+            let al = a[i].trim();
+            let bl = b[i].trim();
+            if al == bl {
+                score += al.len().max(1);
+            } else {
+                // Partial character match
+                let common = al.chars().zip(bl.chars()).take_while(|(a, b)| a == b).count();
+                score += common;
+            }
+        }
+        score
+    }
+
     /// Show context around the edit location
     fn show_context(content: &str, edit_start: usize, new_text: &str, context_lines: usize) -> String {
         let lines: Vec<&str> = content.lines().collect();
@@ -222,23 +298,35 @@ impl Tool for EditFileTool {
 
         // Check for exact match
         if !content.contains(&params.old_text) {
-            // Try to find similar text to help user debug
-            let old_text_trimmed = params.old_text.trim();
-            let similar_found = if old_text_trimmed.len() > 10 {
-                let search_text = &old_text_trimmed[..old_text_trimmed.len().min(20)];
-                content.contains(search_text)
-            } else {
-                false
-            };
+            let mut msg = String::from("old_text not found in file. The text must match exactly (including whitespace and indentation).\n");
 
-            let mut msg = format!("old_text not found in file. The text must match exactly (including whitespace and indentation).");
-            if similar_found {
-                msg.push_str("\n\nHint: Similar text was found. Check that whitespace matches exactly.");
+            // Fuzzy matching: find the closest match in the file
+            let best_match = Self::find_closest_match(&content, &params.old_text);
+            if let Some((match_text, line_num, similarity)) = best_match {
+                msg.push_str(&format!(
+                    "\n**Closest match** ({}% similar) at line {}:\n```\n{}\n```\n",
+                    similarity, line_num, match_text
+                ));
+                msg.push_str("\nCompare carefully with your old_text for whitespace/indentation differences.");
+            } else {
+                // No fuzzy match — show the first lines of the file
+                let lines: Vec<&str> = content.lines().take(20).collect();
+                msg.push_str(&format!("\nFirst 20 lines of file:\n{}", lines.join("\n")));
             }
 
-            // Show a snippet of the file to help user
-            let lines: Vec<&str> = content.lines().take(20).collect();
-            msg.push_str(&format!("\n\nFirst 20 lines of file:\n{}", lines.join("\n")));
+            // Check common mistakes
+            let old_trimmed = params.old_text.trim();
+            let content_trimmed: String = content.lines().map(|l| l.trim()).collect::<Vec<_>>().join("\n");
+            if content_trimmed.contains(old_trimmed) {
+                msg.push_str("\n\n**Hint**: The text exists but with different indentation. Check leading spaces/tabs.");
+            }
+
+            // Check for tab vs space mismatch
+            if params.old_text.contains('\t') && !content.contains('\t') {
+                msg.push_str("\n**Hint**: Your old_text uses tabs but the file uses spaces.");
+            } else if !params.old_text.contains('\t') && content.contains('\t') && params.old_text.contains("    ") {
+                msg.push_str("\n**Hint**: Your old_text uses spaces but the file uses tabs.");
+            }
 
             return ToolResult::error(msg);
         }

@@ -23,9 +23,9 @@ mod web_fetch;
 // Re-exports from submodules
 pub use bash::{
     ApplyPatchTool, DeleteFileTool, EditFileTool, ExecTool, GitTool, GlobTool, GrepTool,
-    ListFilesTool, ReadFileTool, RenameFileTool, WriteFileTool,
+    ListFilesTool, ReadFileTool, ReadSymbolTool, RenameFileTool, WriteFileTool,
 };
-pub use code::{CommitterTool, DeployTool, PrQualityTool};
+pub use code::{CommitterTool, DeployTool, IndexProjectTool, PrQualityTool, VerifyChangesTool};
 pub use core::{
     AddTaskTool, DefineTasksTool, AgentSendTool, ApiKeysCheckTool, AskUserTool, ImportIdentityTool,
     InstallApiKeyTool, ManageSkillsTool, ModifyIdentityTool, ModifySoulTool, SayToUserTool,

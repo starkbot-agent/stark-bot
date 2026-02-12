@@ -9,6 +9,7 @@ use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
 };
+use crate::tools::ToolSafetyLevel;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -132,6 +133,17 @@ impl SubagentTool {
             },
         );
 
+        properties.insert(
+            "read_only".to_string(),
+            PropertySchema {
+                schema_type: "boolean".to_string(),
+                description: "If true, restrict the subagent to read-only tools (read_file, grep, glob, list_files, read_symbol, web_fetch). Useful for safe parallel research — subagent cannot modify files or run commands.".to_string(),
+                default: Some(json!(false)),
+                items: None,
+                enum_values: None,
+            },
+        );
+
         SubagentTool {
             definition: ToolDefinition {
                 name: "subagent".to_string(),
@@ -195,6 +207,8 @@ struct SubagentParams {
     timeout: Option<u64>,
     wait: Option<bool>,
     context: Option<String>,
+    #[serde(default)]
+    read_only: Option<bool>,
 }
 
 #[async_trait]
@@ -243,6 +257,7 @@ impl Tool for SubagentTool {
                 let session_id = context.session_id.unwrap();
                 let channel_id = context.channel_id.unwrap();
 
+                let read_only = params.read_only.unwrap_or(false);
                 let subagent_context = SubAgentContext::new(
                     subagent_id.clone(),
                     session_id,
@@ -253,7 +268,8 @@ impl Tool for SubagentTool {
                 )
                 .with_model(params.model.clone())
                 .with_context(params.context.clone())
-                .with_thinking(params.thinking.clone());
+                .with_thinking(params.thinking.clone())
+                .with_read_only(read_only);
 
                 // Spawn the sub-agent
                 match manager.spawn(subagent_context).await {
@@ -792,6 +808,10 @@ impl Tool for SubagentStatusTool {
                 "legacy": true
             }))
         }
+    }
+
+    fn safety_level(&self) -> ToolSafetyLevel {
+        ToolSafetyLevel::ReadOnly
     }
 }
 

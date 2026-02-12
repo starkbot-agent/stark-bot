@@ -690,6 +690,15 @@ impl Tool for ExecTool {
         log::info!("Command completed: exit_code={}, duration={}ms, output_len={}",
             exit_code, duration_ms, result_text.len());
 
+        // Add actionable hints for common error patterns
+        if !success {
+            let hints = Self::generate_error_hints(&params.command, &result_text);
+            if !hints.is_empty() {
+                result_text.push_str("\n\n--- Hints ---\n");
+                result_text.push_str(&hints);
+            }
+        }
+
         let result = if success {
             ToolResult::success(result_text)
         } else {
@@ -702,6 +711,85 @@ impl Tool for ExecTool {
             "duration_ms": duration_ms,
             "working_dir": working_dir.to_string_lossy()
         }))
+    }
+}
+
+impl ExecTool {
+    /// Generate actionable hints based on error output patterns
+    fn generate_error_hints(command: &str, output: &str) -> String {
+        let mut hints = Vec::new();
+        let lower = output.to_lowercase();
+        let cmd_lower = command.to_lowercase();
+
+        // Rust compilation errors
+        if cmd_lower.contains("cargo") {
+            if lower.contains("error[e") {
+                // Extract file locations from "-->  src/file.rs:line:col"
+                let locations: Vec<&str> = output.lines()
+                    .filter(|l| l.trim().starts_with("-->"))
+                    .take(5)
+                    .collect();
+                if !locations.is_empty() {
+                    hints.push(format!("Compilation errors found. Use `read_file` to inspect:\n{}",
+                        locations.join("\n")));
+                }
+            }
+            if lower.contains("unresolved import") || lower.contains("cannot find") {
+                hints.push("Missing import or module. Check use statements and module declarations.".to_string());
+            }
+            if lower.contains("borrow") || lower.contains("lifetime") {
+                hints.push("Borrow checker error. Consider using .clone(), references, or restructuring ownership.".to_string());
+            }
+        }
+
+        // TypeScript/Node errors
+        if cmd_lower.contains("tsc") || cmd_lower.contains("npm") || cmd_lower.contains("npx") {
+            if lower.contains("ts2") || lower.contains("error ts") {
+                hints.push("TypeScript type errors found. Use `read_file` to check the flagged files.".to_string());
+            }
+            if lower.contains("module not found") || lower.contains("cannot find module") {
+                hints.push("Missing dependency. Run `npm install <package>` to add it.".to_string());
+            }
+            if lower.contains("enoent") || lower.contains("no such file") {
+                hints.push("File not found. Check that paths are correct and files exist.".to_string());
+            }
+        }
+
+        // Python errors
+        if cmd_lower.contains("python") || cmd_lower.contains("pytest") || cmd_lower.contains("pip") {
+            if lower.contains("modulenotfounderror") || lower.contains("no module named") {
+                hints.push("Missing Python module. Run `pip install <module>` or check your imports.".to_string());
+            }
+            if lower.contains("syntaxerror") {
+                hints.push("Python syntax error. Check the file and line mentioned in the traceback.".to_string());
+            }
+            if lower.contains("indentationerror") {
+                hints.push("Indentation error. Python is whitespace-sensitive — check spaces vs tabs.".to_string());
+            }
+        }
+
+        // Go errors
+        if cmd_lower.contains("go ") {
+            if lower.contains("undefined:") {
+                hints.push("Undefined symbol. Check that the function/variable is defined and exported (capitalized).".to_string());
+            }
+            if lower.contains("imported and not used") {
+                hints.push("Unused import. Remove the import or use the package.".to_string());
+            }
+        }
+
+        // Generic patterns
+        if lower.contains("permission denied") {
+            hints.push("Permission denied. The command may need different file permissions.".to_string());
+        }
+        if lower.contains("command not found") || lower.contains("not found") && lower.contains("no such") {
+            hints.push("Command not found. Check that the tool is installed and on PATH.".to_string());
+        }
+        if lower.contains("eaddrinuse") || lower.contains("address already in use") {
+            hints.push("Port already in use. Another process is running on that port. Use `process_status` to check.".to_string());
+        }
+
+        hints.join("\n")
     }
 }
 

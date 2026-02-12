@@ -813,6 +813,9 @@ pub struct SubAgentContext {
     pub context: Option<String>,
     /// Thinking level for Claude models
     pub thinking_level: Option<String>,
+    /// If true, restrict to read-only tools (for safe parallel research)
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 impl SubAgentContext {
@@ -841,6 +844,7 @@ impl SubAgentContext {
             completed_at: None,
             context: None,
             thinking_level: None,
+            read_only: false,
         }
     }
 
@@ -859,6 +863,12 @@ impl SubAgentContext {
     /// Set thinking level
     pub fn with_thinking(mut self, level: Option<String>) -> Self {
         self.thinking_level = level;
+        self
+    }
+
+    /// Set read-only mode (restricts to read-only tools for safe research)
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
         self
     }
 

@@ -19,6 +19,7 @@ pub struct ToolInfo {
     pub description: String,
     pub group: String,
     pub enabled: bool,
+    pub safety_level: String,
 }
 
 #[derive(Serialize)]
@@ -186,6 +187,7 @@ async fn list_tools(state: web::Data<AppState>, req: HttpRequest) -> impl Respon
                 description: def.description.clone(),
                 group: group.as_str().to_string(),
                 enabled: tool_config.is_tool_allowed(&def.name, group),
+                safety_level: tool.safety_level().as_str().to_string(),
             }
         })
         .collect();

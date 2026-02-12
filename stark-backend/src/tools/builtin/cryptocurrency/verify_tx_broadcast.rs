@@ -11,6 +11,7 @@ use crate::tools::rpc_config::resolve_rpc_from_context;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
 };
+use crate::tools::ToolSafetyLevel;
 use crate::tx_queue::QueuedTxStatus;
 use crate::x402::{TxLog, X402EvmRpc};
 use async_trait::async_trait;
@@ -338,6 +339,8 @@ impl Tool for VerifyTxBroadcastTool {
             })).collect::<Vec<_>>(),
         }))
     }
+
+    // Standard — mutates tx_queue state, broadcasts events, makes RPC calls
 }
 
 // ─── ERC20 Transfer log decoding ─────────────────────────────────────────────

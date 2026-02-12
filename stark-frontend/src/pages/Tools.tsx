@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Wrench, Check, X } from 'lucide-react';
+import { Wrench, Check, X, Shield, Eye } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { getTools, getToolGroups, ToolGroupInfo } from '@/lib/api';
 
@@ -8,6 +8,7 @@ interface Tool {
   description: string;
   group: string;
   enabled: boolean;
+  safety_level: string;
 }
 
 export default function Tools() {
@@ -103,6 +104,18 @@ export default function Tools() {
                             <Wrench className="w-4 h-4 sm:w-5 sm:h-5 text-slate-300" />
                           </div>
                           <p className="font-medium text-white text-sm sm:text-base truncate">{tool.name}</p>
+                          {tool.safety_level === 'safe_mode' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-green-500/20 text-green-400 border border-green-500/30 shrink-0">
+                              <Shield className="w-3 h-3" />
+                              Safe
+                            </span>
+                          )}
+                          {tool.safety_level === 'read_only' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30 shrink-0">
+                              <Eye className="w-3 h-3" />
+                              ReadOnly
+                            </span>
+                          )}
                           {/* Description inline on desktop */}
                           {tool.description && (
                             <p className="hidden sm:block text-sm text-slate-400 truncate">{tool.description}</p>

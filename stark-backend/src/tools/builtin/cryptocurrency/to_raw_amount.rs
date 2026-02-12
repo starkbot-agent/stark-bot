@@ -7,6 +7,7 @@ use crate::tools::registry::Tool;
 use crate::tools::types::{
     PropertySchema, ToolContext, ToolDefinition, ToolGroup, ToolInputSchema, ToolResult,
 };
+use crate::tools::ToolSafetyLevel;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -242,6 +243,8 @@ impl Tool for ToRawAmountTool {
             "cached_in_register": params.cache_as
         }))
     }
+
+    // Standard — writes raw amount to context registers
 }
 
 #[cfg(test)]

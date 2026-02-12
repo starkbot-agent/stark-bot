@@ -325,21 +325,64 @@ impl SubAgentManager {
             },
         ];
 
+        // SECURITY: Check if parent channel is in safe mode BEFORE building tool context
+        let parent_channel_safe_mode = db
+            .get_channel(context.parent_channel_id)
+            .ok()
+            .flatten()
+            .map(|ch| ch.safe_mode)
+            .unwrap_or(false);
+
         // Build tool context
         let workspace_dir = crate::config::workspace_dir();
-        let tool_context = ToolContext::new()
+        let mut tool_context = ToolContext::new()
             .with_channel(context.parent_channel_id, "subagent".to_string())
             .with_session(session.id)
             .with_workspace(workspace_dir)
             .with_broadcaster(broadcaster.clone());
 
-        // Get tool configuration
-        let tool_config = db
+        // SECURITY: Pass safe_mode flag to tool context so memory tools sandbox to safemode/
+        if parent_channel_safe_mode {
+            tool_context.extra.insert(
+                "safe_mode".to_string(),
+                serde_json::json!(true),
+            );
+        }
+
+        // Get tool configuration — enforce safe mode and read_only restrictions
+        let mut tool_config = db
             .get_effective_tool_config(Some(context.parent_channel_id))
             .unwrap_or_default();
 
-        // Get available tools
-        let tools: Vec<ToolDefinition> = tool_registry.get_tool_definitions(&tool_config);
+        // SECURITY: If parent channel is in safe mode, override to safe mode config.
+        // Defense-in-depth — the subagent tool shouldn't be callable in safe mode,
+        // but if we ever get here, enforce the restriction.
+        if parent_channel_safe_mode {
+            log::info!(
+                "[SUBAGENT] {} parent channel is safe mode — restricting to safe mode tools + sandboxed memory",
+                context.id
+            );
+            tool_config = crate::tools::ToolConfig::safe_mode();
+        }
+
+        // Get available tools — filtered by safety level when in restricted mode
+        let tools: Vec<ToolDefinition> = if parent_channel_safe_mode {
+            tool_registry.get_tool_definitions_at_safety_level(
+                &tool_config,
+                crate::tools::ToolSafetyLevel::SafeMode,
+            )
+        } else if context.read_only {
+            log::info!(
+                "[SUBAGENT] {} is read_only — restricting to read-only tools",
+                context.id
+            );
+            tool_registry.get_tool_definitions_at_safety_level(
+                &tool_config,
+                crate::tools::ToolSafetyLevel::ReadOnly,
+            )
+        } else {
+            tool_registry.get_tool_definitions(&tool_config)
+        };
 
         // Execute the AI with tool loop
         let max_iterations = 15; // Sub-agents get fewer iterations
@@ -566,6 +609,7 @@ impl SubAgentManager {
                         .get::<_, Option<String>>(14)?
                         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&chrono::Utc)),
+                    read_only: false,
                 })
             },
         );
@@ -616,6 +660,7 @@ impl SubAgentManager {
                         .get::<_, Option<String>>(14)?
                         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
                         .map(|dt| dt.with_timezone(&chrono::Utc)),
+                    read_only: false,
                 })
             })
             .map_err(|e| format!("Failed to execute query: {}", e))?;

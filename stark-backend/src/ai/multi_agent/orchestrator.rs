@@ -1,7 +1,7 @@
 //! Simplified orchestrator - manages agent context without mode transitions
 
 use super::tools;
-use super::types::{AgentContext, AgentMode};
+use super::types::{AgentContext, AgentMode, AgentSubtype};
 use crate::tools::ToolDefinition;
 use serde_json::Value;
 
@@ -202,10 +202,54 @@ impl Orchestrator {
         }
 
         prompt.push_str(base_prompt);
+
+        // CodeEngineer-specific guidelines — injected when subtype is active
+        if self.context.subtype == AgentSubtype::CodeEngineer {
+            prompt.push_str("\n\n");
+            prompt.push_str(&Self::code_engineer_guidelines());
+        }
+
         prompt.push_str("\n\n---\n\n");
         prompt.push_str(&self.format_context_summary());
 
         prompt
+    }
+
+    /// Guidelines injected when the agent is in CodeEngineer mode.
+    /// These transform a generic LLM into a disciplined software engineer.
+    fn code_engineer_guidelines() -> String {
+        r#"## Software Engineering Guidelines (CodeEngineer Mode)
+
+### Before Writing Code
+- **ALWAYS read existing code** with `read_file` or `read_symbol` before modifying it.
+- Use `index_project` to understand unfamiliar codebases before diving in.
+- Use `grep` and `glob` to find related code, callers, and existing patterns.
+- Match the existing code style (indentation, naming conventions, import patterns).
+
+### While Writing Code
+- For multi-file changes, plan dependency order: types first, then implementations, then callers.
+- When using `edit_file`, provide enough context in `old_text` to be unique (3+ lines preferred).
+- Prefer `edit_file` for targeted changes. Use `write_file` only for new files or full rewrites.
+- Use `apply_patch` for complex multi-file edits in one operation.
+- Use `read_symbol` to inspect specific functions without loading entire files.
+
+### After Writing Code
+- **ALWAYS verify changes compile** by running `verify_changes` with `checks: "build"`.
+- If writing tests, run `verify_changes` with `checks: "test"` to confirm they pass.
+- If `verify_changes` fails, read the error output carefully, fix the issue, then re-verify.
+- Do NOT declare a coding task complete without at least a successful build check.
+
+### Debugging Workflow
+- When a build/test fails, read the FULL error output before attempting a fix.
+- Use error locations from `verify_changes` output to navigate directly to problems.
+- Fix one error at a time — cascading errors often resolve when the root cause is fixed.
+- Use `read_symbol` to inspect the specific function that's failing.
+
+### Code Quality
+- Never leave TODO/FIXME comments without explaining what's needed.
+- Don't introduce debug logging (println!, console.log) unless explicitly asked.
+- Keep changes minimal and focused — only modify what's necessary for the task."#
+            .to_string()
     }
 
     /// Format a summary of the current context for the prompt

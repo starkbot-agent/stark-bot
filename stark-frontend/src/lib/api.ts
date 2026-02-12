@@ -150,6 +150,7 @@ interface ToolInfo {
   description: string;
   group: string;
   enabled: boolean;
+  safety_level: string;
 }
 
 interface ToolsListResponse {

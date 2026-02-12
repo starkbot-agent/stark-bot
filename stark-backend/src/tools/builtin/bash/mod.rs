@@ -11,6 +11,7 @@ mod glob;
 mod grep;
 mod list_files;
 mod read_file;
+mod read_symbol;
 mod rename_file;
 mod write_file;
 
@@ -23,5 +24,6 @@ pub use glob::GlobTool;
 pub use grep::GrepTool;
 pub use list_files::ListFilesTool;
 pub use read_file::ReadFileTool;
+pub use read_symbol::ReadSymbolTool;
 pub use rename_file::RenameFileTool;
 pub use write_file::WriteFileTool;
