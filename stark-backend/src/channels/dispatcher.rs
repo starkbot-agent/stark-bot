@@ -15,6 +15,10 @@ use crate::gateway::protocol::GatewayEvent;
 use crate::models::session_message::MessageRole as DbMessageRole;
 use crate::models::{AgentSettings, CompletionStatus, SessionScope, DEFAULT_MAX_TOOL_ITERATIONS};
 use crate::qmd_memory::MemoryStore;
+use crate::telemetry::{
+    self, RolloutConfig, RolloutManager, SpanType,
+    RewardEmitter, TelemetryStore, Watchdog, WatchdogConfig, ResourceManager,
+};
 use crate::tools::{ToolConfig, ToolContext, ToolDefinition, ToolExecution, ToolRegistry};
 use chrono::Utc;
 use once_cell::sync::Lazy;
@@ -113,6 +117,14 @@ pub struct MessageDispatcher {
     validator_registry: Option<Arc<crate::tool_validators::ValidatorRegistry>>,
     /// Transaction queue manager for queued web3 transactions
     tx_queue: Option<Arc<crate::tx_queue::TxQueueManager>>,
+    /// Telemetry store for persisting execution spans
+    telemetry_store: Arc<TelemetryStore>,
+    /// Rollout manager for retry lifecycle
+    rollout_manager: Arc<RolloutManager>,
+    /// Resource manager for versioned prompts/configs
+    resource_manager: Arc<ResourceManager>,
+    /// Watchdog configuration for timeout enforcement
+    watchdog_config: WatchdogConfig,
     /// Mock AI client for integration tests (bypasses real AI API)
     #[cfg(test)]
     mock_ai_client: Option<crate::ai::MockAiClient>,
@@ -189,6 +201,12 @@ impl MessageDispatcher {
             log::info!("[DISPATCHER] Memory store linked to context manager");
         }
 
+        // Initialize telemetry subsystem
+        let telemetry_store = Arc::new(TelemetryStore::new(db.clone()));
+        let rollout_manager = Arc::new(RolloutManager::new(db.clone()));
+        let resource_manager = Arc::new(ResourceManager::new(db.clone()));
+        resource_manager.seed_defaults();
+
         Self {
             db,
             broadcaster,
@@ -204,6 +222,10 @@ impl MessageDispatcher {
             hook_manager: None,
             validator_registry: None,
             tx_queue: None,
+            telemetry_store,
+            rollout_manager,
+            resource_manager,
+            watchdog_config: WatchdogConfig::default(),
             #[cfg(test)]
             mock_ai_client: None,
         }
@@ -258,6 +280,10 @@ impl MessageDispatcher {
             context_manager = context_manager.with_memory_store(store.clone());
         }
 
+        let telemetry_store = Arc::new(TelemetryStore::new(db.clone()));
+        let rollout_manager = Arc::new(RolloutManager::new(db.clone()));
+        let resource_manager = Arc::new(ResourceManager::new(db.clone()));
+
         Self {
             db: db.clone(),
             broadcaster,
@@ -273,6 +299,10 @@ impl MessageDispatcher {
             hook_manager: None,     // No hooks without explicit setup
             validator_registry: None, // No validators without explicit setup
             tx_queue: None,         // No tx queue without explicit setup
+            telemetry_store,
+            rollout_manager,
+            resource_manager,
+            watchdog_config: WatchdogConfig::default(),
             #[cfg(test)]
             mock_ai_client: None,
         }
@@ -286,6 +316,16 @@ impl MessageDispatcher {
     /// Get the SubAgentManager (if available)
     pub fn subagent_manager(&self) -> Option<Arc<SubAgentManager>> {
         self.subagent_manager.clone()
+    }
+
+    /// Get the TelemetryStore
+    pub fn telemetry_store(&self) -> &Arc<TelemetryStore> {
+        &self.telemetry_store
+    }
+
+    /// Get the ResourceManager
+    pub fn resource_manager(&self) -> &Arc<ResourceManager> {
+        &self.resource_manager
     }
 
     /// Dispatch a normalized message to the AI and return the response
@@ -321,6 +361,49 @@ impl MessageDispatcher {
             Some(user_msg),
         );
 
+        // Initialize telemetry rollout for this dispatch
+        // We use session_id=0 initially; it will be updated once the session is resolved
+        let rollout_config = RolloutConfig::default();
+        let (mut rollout, span_collector) = self.rollout_manager.start_rollout(
+            0, // will be updated once we have the session
+            message.channel_id,
+            rollout_config,
+        );
+        let span_collector = Arc::new(span_collector);
+
+        // Set up the watchdog for timeout enforcement
+        let reward_emitter = Arc::new(RewardEmitter::new(Arc::clone(&span_collector)));
+        let watchdog = Watchdog::new(
+            self.watchdog_config.clone(),
+            Arc::clone(&span_collector),
+            Arc::clone(&reward_emitter),
+        );
+
+        // Start heartbeat monitor for long-running executions
+        let watchdog = Arc::new(watchdog);
+        let heartbeat_handle = watchdog.start_heartbeat_monitor(
+            message.channel_id,
+            Arc::clone(&self.broadcaster),
+        );
+        drop(watchdog); // Heartbeat holds its own Arc clone
+
+        // Install thread-local span collector for emit_* functions
+        telemetry::set_active_collector(Arc::clone(&span_collector));
+
+        // Emit a rollout start span
+        let mut rollout_span = span_collector.start_span(SpanType::Rollout, "dispatch_start");
+        rollout_span.attributes = serde_json::json!({
+            "channel_id": message.channel_id,
+            "user_name": message.user_name,
+            "channel_type": message.channel_type,
+            "rollout_id": rollout.rollout_id,
+        });
+        rollout_span.succeed();
+        span_collector.record(rollout_span);
+
+        // Track the resource version used
+        rollout.resources_id = self.resource_manager.active_version_id();
+
         // Get or create identity for the user
         let identity = match self.db.get_or_create_identity(
             &message.channel_type,
@@ -336,6 +419,10 @@ impl MessageDispatcher {
                     &error_msg,
                 ));
                 self.execution_tracker.complete_execution(message.channel_id);
+                self.rollout_manager.fail_attempt(&mut rollout, &error_msg, &span_collector);
+                self.telemetry_store.persist_spans(&span_collector);
+                heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                 return DispatchResult::error(error_msg);
             }
         };
@@ -424,6 +511,10 @@ impl MessageDispatcher {
                         &error_msg,
                     ));
                     self.execution_tracker.complete_execution(message.channel_id);
+                    self.rollout_manager.fail_attempt(&mut rollout, &error_msg, &span_collector);
+                    self.telemetry_store.persist_spans(&span_collector);
+                    heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                     return DispatchResult::error(error_msg);
                 }
             }
@@ -445,6 +536,10 @@ impl MessageDispatcher {
                         &error_msg,
                     ));
                     self.execution_tracker.complete_execution(message.channel_id);
+                    self.rollout_manager.fail_attempt(&mut rollout, &error_msg, &span_collector);
+                    self.telemetry_store.persist_spans(&span_collector);
+                    heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                     return DispatchResult::error(error_msg);
                 }
             }
@@ -510,6 +605,10 @@ impl MessageDispatcher {
                     &format!("[Error] {}", error), None, None, None, None,
                 );
                 self.execution_tracker.complete_execution(message.channel_id);
+                self.rollout_manager.fail_attempt(&mut rollout, &error, &span_collector);
+                self.telemetry_store.persist_spans(&span_collector);
+                heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                 return DispatchResult::error(error);
             }
         };
@@ -544,6 +643,10 @@ impl MessageDispatcher {
                     );
                     self.broadcaster.broadcast(GatewayEvent::agent_error(message.channel_id, &error));
                     self.execution_tracker.complete_execution(message.channel_id);
+                    self.rollout_manager.fail_attempt(&mut rollout, &error, &span_collector);
+                    self.telemetry_store.persist_spans(&span_collector);
+                    heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                     return DispatchResult::error(error);
                 }
             }
@@ -564,6 +667,10 @@ impl MessageDispatcher {
                     &error,
                 ));
                 self.execution_tracker.complete_execution(message.channel_id);
+                self.rollout_manager.fail_attempt(&mut rollout, &error, &span_collector);
+                self.telemetry_store.persist_spans(&span_collector);
+                heartbeat_handle.abort();
+                telemetry::clear_active_collector();
                 return DispatchResult::error(error);
             }
         };
@@ -881,47 +988,82 @@ impl MessageDispatcher {
             serde_json::json!(message.text.clone()),
         );
 
-        // Generate response with optional tool execution loop
-        let final_response = if use_tools {
-            self.generate_with_tool_loop(
-                &client,
-                messages,
-                &tool_config,
-                &tool_context,
-                &identity.identity_id,
-                session.id,
-                &message,
-                archetype_id,
-                is_safe_mode,
-            ).await
-        } else {
-            // Simple generation without tools - with x402 event emission
-            match client.generate_text_with_events(messages, &self.broadcaster, message.channel_id).await {
-                Ok((content, payment)) => {
-                    // Save x402 payment if one was made
-                    if let Some(ref payment_info) = payment {
-                        if let Err(e) = self.db.record_x402_payment(
-                            Some(message.channel_id),
-                            None,
-                            payment_info.resource.as_deref(),
-                            &payment_info.amount,
-                            &payment_info.amount_formatted,
-                            &payment_info.asset,
-                            &payment_info.pay_to,
-                            payment_info.tx_hash.as_deref(),
-                            &payment_info.status.to_string(),
-                        ) {
-                            log::error!("[DISPATCH] Failed to record x402 payment: {}", e);
+        // Generate response with retry-aware loop.
+        // On retryable failures (timeout, LLM error, context overflow), the rollout
+        // manager creates a new attempt and we retry the entire generation.
+        let final_response = loop {
+            let attempt_result = if use_tools {
+                self.generate_with_tool_loop(
+                    &client,
+                    messages.clone(),
+                    &tool_config,
+                    &tool_context,
+                    &identity.identity_id,
+                    session.id,
+                    &message,
+                    archetype_id,
+                    is_safe_mode,
+                ).await
+            } else {
+                // Simple generation without tools - with x402 event emission
+                match client.generate_text_with_events(messages.clone(), &self.broadcaster, message.channel_id).await {
+                    Ok((content, payment)) => {
+                        // Save x402 payment if one was made
+                        if let Some(ref payment_info) = payment {
+                            if let Err(e) = self.db.record_x402_payment(
+                                Some(message.channel_id),
+                                None,
+                                payment_info.resource.as_deref(),
+                                &payment_info.amount,
+                                &payment_info.amount_formatted,
+                                &payment_info.asset,
+                                &payment_info.pay_to,
+                                payment_info.tx_hash.as_deref(),
+                                &payment_info.status.to_string(),
+                            ) {
+                                log::error!("[DISPATCH] Failed to record x402 payment: {}", e);
+                            }
                         }
+                        Ok((content, false))
                     }
-                    Ok(content)
+                    Err(e) => Err(e),
                 }
-                Err(e) => Err(e),
+            };
+
+            // On success, break out of the retry loop
+            match attempt_result {
+                Ok(response) => break Ok(response),
+                Err(ref error_str) => {
+                    let error_msg = error_str.to_string();
+                    let should_retry = self.rollout_manager.fail_attempt(
+                        &mut rollout,
+                        &error_msg,
+                        &span_collector,
+                    );
+                    if should_retry {
+                        let delay_ms = self.rollout_manager.retry_delay(&rollout);
+                        log::info!(
+                            "[DISPATCH] Retrying after {}ms (attempt {}/{}): {}",
+                            delay_ms,
+                            rollout.attempt_count(),
+                            rollout.config.max_attempts,
+                            error_msg,
+                        );
+                        self.broadcaster.broadcast(GatewayEvent::agent_error(
+                            message.channel_id,
+                            &format!("Retrying... (attempt {}/{})", rollout.attempt_count(), rollout.config.max_attempts),
+                        ));
+                        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                        continue; // retry
+                    } else {
+                        break Err(error_msg);
+                    }
+                }
             }
         };
 
         match final_response {
-            Ok(response) => {
+            Ok((response, delivered_via_say_to_user)) => {
                 // Estimate tokens for the response
                 let response_tokens = estimate_tokens(&response);
 
@@ -998,8 +1140,8 @@ impl MessageDispatcher {
                     }
                 }
 
-                // Emit response event (skip if empty - say_to_user already delivered the message)
-                if !response.trim().is_empty() {
+                // Emit response event — skip if empty or if say_to_user already broadcast it
+                if !response.trim().is_empty() && !delivered_via_say_to_user {
                     self.broadcaster.broadcast(GatewayEvent::agent_response(
                         message.channel_id,
                         &message.user_name,
@@ -1016,6 +1158,22 @@ impl MessageDispatcher {
 
                 // Complete execution tracking
                 self.execution_tracker.complete_execution(message.channel_id);
+
+                // Complete telemetry: succeed rollout and persist spans.
+                // Note: For the tool-loop path, session_completed reward is emitted
+                // in finalize_tool_loop with real counts. Only emit here for non-tool path.
+                self.rollout_manager.succeed_rollout(&mut rollout, response.clone());
+                if !use_tools {
+                    telemetry::emit_reward("session_completed", 2.0, serde_json::json!({
+                        "success": true,
+                        "iterations": 0,
+                        "tool_calls": 0,
+                        "path": "simple_generation",
+                    }));
+                }
+                self.telemetry_store.persist_spans(&span_collector);
+                heartbeat_handle.abort();
+                telemetry::clear_active_collector();
 
                 DispatchResult::success(response)
             }
@@ -1045,6 +1203,20 @@ impl MessageDispatcher {
                 // Complete execution tracking on error
                 self.execution_tracker.complete_execution(message.channel_id);
 
+                // Complete telemetry: persist spans (rollout already failed in retry loop).
+                // Only emit session_failed reward for non-tool path; tool path handles
+                // this in finalize_tool_loop with real iteration/tool counts.
+                if !use_tools {
+                    telemetry::emit_reward("session_failed", -1.0, serde_json::json!({
+                        "success": false,
+                        "error": &error,
+                        "path": "simple_generation",
+                    }));
+                }
+                self.telemetry_store.persist_spans(&span_collector);
+                heartbeat_handle.abort();
+                telemetry::clear_active_collector();
+
                 DispatchResult::error(error)
             }
         }
@@ -1063,7 +1235,7 @@ impl MessageDispatcher {
         original_message: &NormalizedMessage,
         archetype_id: ArchetypeId,
         is_safe_mode: bool,
-    ) -> Result<String, String> {
+    ) -> Result<(String, bool), String> {
         // Load existing agent context or create new one
         let mut orchestrator = match self.db.get_agent_context(session_id) {
             Ok(Some(context)) => {
@@ -1226,7 +1398,7 @@ impl MessageDispatcher {
                     log::error!("[TOOL_LOOP] Failed to record x402 payment: {}", e);
                 }
             }
-            return Ok(content);
+            return Ok((content, false));
         }
 
         // Get the archetype for this request
@@ -1804,23 +1976,66 @@ impl MessageDispatcher {
                     );
                     let validation_result = validator_registry.validate(&validation_ctx).await;
                     if let Some(error_msg) = validation_result.to_error_message() {
+                        // Emit a skipped tool span for validator rejection
+                        telemetry::emit_annotation("tool_validator_rejected", serde_json::json!({
+                            "tool_name": tool_name,
+                            "error": error_msg,
+                        }));
                         crate::tools::ToolResult::error(error_msg)
                     } else {
-                        let tool_result = self.tool_registry
-                            .execute(tool_name, tool_arguments.clone(), tool_context, Some(exec_config))
-                            .await;
+                        let start = std::time::Instant::now();
+                        let tool_timeout = self.watchdog_config.timeout_for_tool(tool_name);
+                        let tool_result = match tokio::time::timeout(
+                            tool_timeout,
+                            self.tool_registry.execute(tool_name, tool_arguments.clone(), tool_context, Some(exec_config)),
+                        ).await {
+                            Ok(result) => result,
+                            Err(_elapsed) => {
+                                let timeout_ms = tool_timeout.as_millis() as u64;
+                                log::warn!("[WATCHDOG] Tool '{}' timed out after {}ms", tool_name, timeout_ms);
+                                telemetry::emit_annotation("watchdog_timeout", serde_json::json!({
+                                    "tool_name": tool_name,
+                                    "timeout_ms": timeout_ms,
+                                }));
+                                crate::tools::ToolResult::error(format!(
+                                    "Tool '{}' timed out after {}s", tool_name, tool_timeout.as_secs()
+                                ))
+                            }
+                        };
+                        let duration_ms = start.elapsed().as_millis() as u64;
                         if tool_result.success {
                             orchestrator.record_tool_call(tool_name);
                         }
+                        // Emit tool telemetry
+                        telemetry::emit_tool_reward(tool_name, tool_result.success, duration_ms);
                         tool_result
                     }
                 } else {
-                    let tool_result = self.tool_registry
-                        .execute(tool_name, tool_arguments.clone(), tool_context, Some(exec_config))
-                        .await;
+                    let start = std::time::Instant::now();
+                    let tool_timeout = self.watchdog_config.timeout_for_tool(tool_name);
+                    let tool_result = match tokio::time::timeout(
+                        tool_timeout,
+                        self.tool_registry.execute(tool_name, tool_arguments.clone(), tool_context, Some(exec_config)),
+                    ).await {
+                        Ok(result) => result,
+                        Err(_elapsed) => {
+                            let timeout_ms = tool_timeout.as_millis() as u64;
+                            log::warn!("[WATCHDOG] Tool '{}' timed out after {}ms", tool_name, timeout_ms);
+                            telemetry::emit_annotation("watchdog_timeout", serde_json::json!({
+                                "tool_name": tool_name,
+                                "timeout_ms": timeout_ms,
+                            }));
+                            crate::tools::ToolResult::error(format!(
+                                "Tool '{}' timed out after {}s", tool_name, tool_timeout.as_secs()
+                            ))
+                        }
+                    };
+                    let duration_ms = start.elapsed().as_millis() as u64;
                     if tool_result.success {
                         orchestrator.record_tool_call(tool_name);
                     }
+                    // Emit tool telemetry
+                    telemetry::emit_tool_reward(tool_name, tool_result.success, duration_ms);
                     tool_result
                 }
             }
@@ -2266,7 +2481,9 @@ impl MessageDispatcher {
         final_summary: &str,
         user_question_content: &str,
         max_tool_iterations: usize,
-    ) -> Result<String, String> {
+        iterations: usize,
+    ) -> Result<(String, bool), String> {
+        // Returns (response_text, already_delivered_via_say_to_user)
         // Clear active skill when the orchestrator loop completes
         if orchestrator_complete || was_cancelled {
             if orchestrator.context().active_skill.is_some() {
@@ -2330,7 +2547,28 @@ impl MessageDispatcher {
             }
         }
 
-        // Build final return
+        // Emit session_completed reward with real iteration/tool counts.
+        // This uses the thread-local span collector installed by dispatch().
+        let success = orchestrator_complete && !was_cancelled;
+        telemetry::emit_reward(
+            if success { "session_completed" } else { "session_failed" },
+            if success {
+                let efficiency = 1.0 - (iterations as f64 / max_tool_iterations as f64);
+                2.0 + efficiency.max(0.0)
+            } else {
+                -1.0
+            },
+            serde_json::json!({
+                "success": success,
+                "iterations": iterations,
+                "tool_calls": tool_call_log.len(),
+                "max_iterations": max_tool_iterations,
+                "was_cancelled": was_cancelled,
+                "waiting_for_user": waiting_for_user_response,
+            }),
+        );
+
+        // Build final return: (response, already_delivered_via_say_to_user)
         if waiting_for_user_response {
             // Save the tool call log to the orchestrator context
             if !tool_call_log.is_empty() {
@@ -2343,14 +2581,14 @@ impl MessageDispatcher {
                     log::warn!("[MULTI_AGENT] Failed to save context with user_context: {}", e);
                 }
             }
-            Ok(user_question_content.to_string())
+            Ok((user_question_content.to_string(), false))
         } else if !last_say_to_user_content.is_empty() {
-            // say_to_user content IS the final result — return it directly.
-            // dispatch() will store it as assistant message and send to channel.
+            // say_to_user content IS the final result — already broadcast via tool.result event.
+            // dispatch() will store it as assistant message but should NOT re-broadcast.
             log::info!("[ORCHESTRATED_LOOP] Returning say_to_user content as final result ({} chars)", last_say_to_user_content.len());
-            Ok(last_say_to_user_content.to_string())
+            Ok((last_say_to_user_content.to_string(), true))
         } else if orchestrator_complete {
-            Ok(final_summary.to_string())
+            Ok((final_summary.to_string(), false))
         } else if tool_call_log.is_empty() {
             Err(format!(
                 "Tool loop hit max iterations ({}) without completion",
@@ -2392,7 +2630,7 @@ impl MessageDispatcher {
         orchestrator: &mut Orchestrator,
         session_id: i64,
         is_safe_mode: bool,
-    ) -> Result<String, String> {
+    ) -> Result<(String, bool), String> {
         // Get max tool iterations from bot settings
         let max_tool_iterations = self.db.get_bot_settings()
             .map(|s| s.max_tool_iterations as usize)
@@ -2403,7 +2641,7 @@ impl MessageDispatcher {
         if let Some(system_msg) = conversation.first_mut() {
             if system_msg.role == MessageRole::System {
                 // Prepend orchestrator context to the existing system prompt
-                let orchestrator_prompt = orchestrator.get_system_prompt();
+                let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                 system_msg.content = format!(
                     "{}\n\n---\n\n{}",
                     orchestrator_prompt,
@@ -2617,7 +2855,7 @@ impl MessageDispatcher {
                     // Update system prompt for new mode with current task
                     if let Some(system_msg) = conversation.first_mut() {
                         if system_msg.role == MessageRole::System {
-                            let orchestrator_prompt = orchestrator.get_system_prompt();
+                            let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                             system_msg.content = format!(
                                 "{}\n\n---\n\n{}",
                                 orchestrator_prompt,
@@ -2699,7 +2937,7 @@ impl MessageDispatcher {
                 // Update system prompt for new mode
                 if let Some(system_msg) = conversation.first_mut() {
                     if system_msg.role == MessageRole::System {
-                        let orchestrator_prompt = orchestrator.get_system_prompt();
+                        let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                         system_msg.content = format!(
                             "{}\n\n---\n\n{}",
                             orchestrator_prompt,
@@ -2713,7 +2951,7 @@ impl MessageDispatcher {
             // mode changes, and any context updates from the orchestrator.
             if let Some(system_msg) = conversation.first_mut() {
                 if system_msg.role == MessageRole::System {
-                    let orchestrator_prompt = orchestrator.get_system_prompt();
+                    let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                     system_msg.content = format!(
                         "{}\n\n---\n\n{}",
                         orchestrator_prompt,
@@ -2876,10 +3114,10 @@ impl MessageDispatcher {
                     continue;
                 }
 
-                // say_to_user content takes priority — it IS the final result
+                // say_to_user content takes priority — it IS the final result (already broadcast)
                 if !last_say_to_user_content.is_empty() {
                     log::info!("[ORCHESTRATED_LOOP] Returning say_to_user content as final result ({} chars)", last_say_to_user_content.len());
-                    return Ok(last_say_to_user_content.clone());
+                    return Ok((last_say_to_user_content.clone(), true));
                 }
 
                 if orchestrator_complete {
@@ -2890,14 +3128,14 @@ impl MessageDispatcher {
                     if !final_summary.is_empty() { parts.push(&final_summary); }
                     if !ai_response.content.trim().is_empty() { parts.push(&ai_response.content); }
                     let response = parts.join("\n\n");
-                    return Ok(response);
+                    return Ok((response, false));
                 } else {
                     // No tool calls but not complete
                     if tool_call_log.is_empty() {
-                        return Ok(ai_response.content);
+                        return Ok((ai_response.content, false));
                     } else {
                         let tool_log_text = tool_call_log.join("\n");
-                        return Ok(format!("{}\n\n{}", tool_log_text, ai_response.content));
+                        return Ok((format!("{}\n\n{}", tool_log_text, ai_response.content), false));
                     }
                 }
             }
@@ -2919,6 +3157,16 @@ impl MessageDispatcher {
                 log::warn!(
                     "[LOOP_DETECTION] Detected {} repeated tool calls, breaking loop to prevent infinite cycling",
                     repeated_count
+                );
+
+                // Emit loop detection reward signal
+                telemetry::emit_reward(
+                    "loop_detected",
+                    -2.0,
+                    serde_json::json!({
+                        "repeated_signatures": &current_signatures,
+                        "iteration": iterations,
+                    }),
                 );
 
                 // Create a feedback entry to guide the AI
@@ -3070,6 +3318,7 @@ impl MessageDispatcher {
             &final_summary,
             &user_question_content,
             max_tool_iterations,
+            iterations,
         )
     }
 
@@ -3086,7 +3335,7 @@ impl MessageDispatcher {
         orchestrator: &mut Orchestrator,
         session_id: i64,
         is_safe_mode: bool,
-    ) -> Result<String, String> {
+    ) -> Result<(String, bool), String> {
         // Get max tool iterations from bot settings
         let max_tool_iterations = self.db.get_bot_settings()
             .map(|s| s.max_tool_iterations as usize)
@@ -3106,7 +3355,7 @@ impl MessageDispatcher {
         let mut conversation = messages.clone();
         if let Some(system_msg) = conversation.first_mut() {
             if system_msg.role == MessageRole::System {
-                let orchestrator_prompt = orchestrator.get_system_prompt();
+                let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                 system_msg.content = format!(
                     "{}\n\n---\n\n{}",
                     orchestrator_prompt,
@@ -3202,7 +3451,7 @@ impl MessageDispatcher {
                 // Update system prompt
                 if let Some(system_msg) = conversation.first_mut() {
                     if system_msg.role == MessageRole::System {
-                        let orchestrator_prompt = orchestrator.get_system_prompt();
+                        let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                         system_msg.content = format!(
                             "{}\n\n---\n\n{}",
                             orchestrator_prompt,
@@ -3215,7 +3464,7 @@ impl MessageDispatcher {
             // Update system prompt every iteration so the AI sees the current task
             if let Some(system_msg) = conversation.first_mut() {
                 if system_msg.role == MessageRole::System {
-                    let orchestrator_prompt = orchestrator.get_system_prompt();
+                    let orchestrator_prompt = orchestrator.get_system_prompt_with_resource_manager(&self.resource_manager);
                     system_msg.content = format!(
                         "{}\n\n---\n\n{}",
                         orchestrator_prompt,
@@ -3292,6 +3541,16 @@ impl MessageDispatcher {
                             log::warn!(
                                 "[TEXT_LOOP_DETECTION] Detected repeated tool call '{}', breaking loop",
                                 tool_call.tool_name
+                            );
+
+                            // Emit loop detection reward signal
+                            telemetry::emit_reward(
+                                "loop_detected",
+                                -2.0,
+                                serde_json::json!({
+                                    "tool_name": tool_call.tool_name,
+                                    "iteration": iterations,
+                                }),
                             );
 
                             // Feed back to conversation to guide the AI
@@ -3486,6 +3745,7 @@ impl MessageDispatcher {
             &final_response,
             &user_question_content,
             max_tool_iterations,
+            iterations,
         )
     }
 
@@ -3899,6 +4159,11 @@ impl MessageDispatcher {
         let ai_future = client.generate_with_tools(conversation, tool_history, tools.clone());
         tokio::pin!(ai_future);
 
+        // Watchdog LLM timeout
+        let llm_timeout = self.watchdog_config.timeout_for_llm();
+        let llm_deadline = tokio::time::sleep(llm_timeout);
+        tokio::pin!(llm_deadline);
+
         // Create a ticker for progress updates (shorter interval for more visibility)
         let mut progress_ticker = interval(Duration::from_secs(AI_PROGRESS_INTERVAL_SECS));
         progress_ticker.tick().await; // First tick is immediate, skip it
@@ -3926,6 +4191,30 @@ impl MessageDispatcher {
                     }
 
                     return Err(crate::ai::AiError::new("Execution cancelled by user"));
+                }
+                // Watchdog: enforce LLM call timeout
+                _ = &mut llm_deadline => {
+                    log::warn!(
+                        "[WATCHDOG] LLM call timed out after {}s on channel {}",
+                        llm_timeout.as_secs(),
+                        channel_id
+                    );
+
+                    // Complete the thinking task
+                    if let Some(ref task_id) = thinking_task_id {
+                        self.execution_tracker.complete_task(task_id);
+                    }
+
+                    // Emit timeout telemetry
+                    telemetry::emit_annotation("watchdog_llm_timeout", serde_json::json!({
+                        "timeout_secs": llm_timeout.as_secs(),
+                        "elapsed_secs": elapsed_secs,
+                        "channel_id": channel_id,
+                    }));
+
+                    return Err(crate::ai::AiError::new(
+                        format!("LLM call timed out after {}s", llm_timeout.as_secs())
+                    ));
                 }
                 result = &mut ai_future => {
                     // Complete the thinking task

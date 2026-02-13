@@ -1336,6 +1336,119 @@ impl Database {
             [],
         );
 
+        // =====================================================
+        // Telemetry tables (agent-lightning philosophy)
+        // =====================================================
+
+        // execution_spans - structured telemetry for every tool/LLM/planning operation
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS execution_spans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                span_id TEXT UNIQUE NOT NULL,
+                sequence_id INTEGER NOT NULL,
+                rollout_id TEXT NOT NULL,
+                session_id INTEGER NOT NULL,
+                attempt_idx INTEGER NOT NULL DEFAULT 0,
+                parent_span_id TEXT,
+                span_type TEXT NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                duration_ms INTEGER,
+                attributes TEXT NOT NULL DEFAULT '{}',
+                error TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )",
+            [],
+        )?;
+
+        // Indexes for execution_spans
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_spans_rollout ON execution_spans(rollout_id)",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_spans_session ON execution_spans(session_id)",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_spans_type ON execution_spans(span_type)",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_spans_started ON execution_spans(started_at)",
+            [],
+        );
+
+        // rollouts - lifecycle tracking for dispatch executions
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS rollouts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rollout_id TEXT UNIQUE NOT NULL,
+                session_id INTEGER NOT NULL,
+                channel_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'queuing',
+                config TEXT NOT NULL DEFAULT '{}',
+                resources_id TEXT,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                duration_ms INTEGER,
+                result TEXT,
+                error TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}'
+            )",
+            [],
+        )?;
+
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rollouts_session ON rollouts(session_id)",
+            [],
+        );
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rollouts_channel ON rollouts(channel_id)",
+            [],
+        );
+
+        // attempts - individual retry attempts within a rollout
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rollout_id TEXT NOT NULL,
+                attempt_idx INTEGER NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                duration_ms INTEGER,
+                succeeded INTEGER NOT NULL DEFAULT 0,
+                failure_reason TEXT,
+                error TEXT,
+                tool_calls INTEGER NOT NULL DEFAULT 0,
+                llm_calls INTEGER NOT NULL DEFAULT 0,
+                tokens_used INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(rollout_id, attempt_idx)
+            )",
+            [],
+        )?;
+
+        // resource_versions - versioned prompts, model configs, tool configs
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS resource_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                version_id TEXT UNIQUE NOT NULL,
+                label TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 0,
+                resources TEXT NOT NULL DEFAULT '[]',
+                description TEXT,
+                created_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_resource_versions_active ON resource_versions(is_active)",
+            [],
+        );
+
         Ok(())
     }
 
@@ -1399,11 +1512,12 @@ impl Database {
         }
     }
 
-    /// Get the full agent identity row (all metadata columns)
+    /// Get the full agent identity row (all metadata columns).
+    /// Only returns identities with agent_id > 0 (properly linked on-chain).
     pub fn get_agent_identity_full(&self) -> Option<AgentIdentityRow> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT agent_id, agent_registry, chain_id, name, description, image, x402_support, active, services_json, supported_trust_json, registration_uri FROM agent_identity ORDER BY id DESC LIMIT 1",
+            "SELECT agent_id, agent_registry, chain_id, name, description, image, x402_support, active, services_json, supported_trust_json, registration_uri FROM agent_identity WHERE agent_id > 0 ORDER BY id DESC LIMIT 1",
             [],
             |row| {
                 Ok(AgentIdentityRow {
@@ -1424,7 +1538,8 @@ impl Database {
         .ok()
     }
 
-    /// Upsert agent identity — deletes existing rows and inserts a new one with full metadata
+    /// Upsert agent identity — deletes existing rows and inserts a new one with full metadata.
+    /// agent_id must be > 0 (a real on-chain agent ID).
     pub fn upsert_agent_identity(
         &self,
         agent_id: i64,
@@ -1439,6 +1554,11 @@ impl Database {
         supported_trust_json: &str,
         registration_uri: Option<&str>,
     ) -> Result<(), rusqlite::Error> {
+        if agent_id <= 0 {
+            return Err(rusqlite::Error::InvalidParameterName(
+                "agent_id must be > 0 — cannot store unlinked identity".to_string(),
+            ));
+        }
         let conn = self.conn();
         conn.execute("DELETE FROM agent_identity", [])?;
         conn.execute(

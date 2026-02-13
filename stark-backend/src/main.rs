@@ -36,6 +36,7 @@ mod web3;
 mod keystore_client;
 mod identity_client;
 mod modules;
+mod telemetry;
 
 use channels::{ChannelManager, MessageDispatcher, SafeModeChannelRateLimiter};
 use tx_queue::TxQueueManager;
@@ -70,6 +71,10 @@ pub struct AppState {
     /// Handles for module background workers (keyed by module name).
     /// Used for hot-reload: abort old worker, spawn new one without restart.
     pub module_workers: Arc<tokio::sync::Mutex<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>>,
+    /// Telemetry store for querying execution spans and reward stats
+    pub telemetry_store: Arc<telemetry::TelemetryStore>,
+    /// Resource manager for versioned prompts and configs
+    pub resource_manager: Arc<telemetry::ResourceManager>,
 }
 
 /// Auto-retrieve backup from keystore on fresh instance
@@ -1116,6 +1121,8 @@ async fn main() -> std::io::Result<()> {
                 safe_mode_rate_limiter: safe_mode_rl.clone(),
                 wallet_provider: wallet_prov.clone(),
                 module_workers: Arc::clone(&mod_workers),
+                telemetry_store: Arc::new(telemetry::TelemetryStore::new(Arc::clone(&db))),
+                resource_manager: Arc::new(telemetry::ResourceManager::new(Arc::clone(&db))),
             }))
             .app_data(web::Data::new(Arc::clone(&sched)))
             // WebSocket data for /ws route
@@ -1152,6 +1159,7 @@ async fn main() -> std::io::Result<()> {
             .configure(controllers::memory::config)
             .configure(controllers::well_known::config)
             .configure(controllers::x402_limits::config)
+            .configure(controllers::telemetry::config)
             // WebSocket Gateway route (same port as HTTP, required for single-port platforms)
             .route("/ws", web::get().to(gateway::actix_ws::ws_handler));
 

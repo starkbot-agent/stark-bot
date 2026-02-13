@@ -193,14 +193,24 @@ async fn get_our_identity(
     }
 
     let registered = agent_id > 0 && !agent_registry.is_empty();
+    let local_identity = !registered && (name.is_some() || description.is_some());
+
+    // Use config chain_id for display when DB has chain_id=0 (local-only identity)
+    let display_chain_id = if chain_id > 0 { chain_id } else { config.chain_id as i64 };
+    let display_registry = if agent_registry.is_empty() {
+        format!("{:?}", config.identity_registry)
+    } else {
+        agent_registry.clone()
+    };
 
     let mut resp = serde_json::json!({
         "success": true,
         "registered": registered,
+        "local_identity": local_identity,
         "identity": {
             "agent_id": if agent_id > 0 { serde_json::json!(agent_id) } else { serde_json::json!(null) },
-            "agent_registry": agent_registry,
-            "chain_id": chain_id,
+            "agent_registry": display_registry,
+            "chain_id": display_chain_id,
             "name": name,
             "description": description,
             "image": image,
@@ -212,6 +222,12 @@ async fn get_our_identity(
             "services": services,
         }
     });
+
+    if local_identity {
+        resp["warning"] = serde_json::json!(
+            "This identity exists locally but is not linked to an on-chain NFT. Use import_identity to link an existing NFT, or register on-chain to mint a new one."
+        );
+    }
 
     if !fetch_errors.is_empty() {
         resp["fetch_errors"] = serde_json::json!(fetch_errors);

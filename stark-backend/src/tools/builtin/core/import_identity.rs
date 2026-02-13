@@ -1,6 +1,7 @@
 //! Import Identity tool
 //!
-//! Imports an existing EIP-8004 identity NFT that was transferred to this wallet.
+//! If identity already exists in the DB, returns it (read mode).
+//! Otherwise imports an existing EIP-8004 identity NFT from on-chain.
 //! Queries the StarkLicense contract for identity NFTs owned by the current wallet,
 //! verifies ownership, and persists the agent_id locally.
 
@@ -28,7 +29,7 @@ impl ImportIdentityTool {
             "agent_id".to_string(),
             PropertySchema {
                 schema_type: "integer".to_string(),
-                description: "Specific agent ID to import. If omitted, auto-discovers identity NFTs owned by this wallet.".to_string(),
+                description: "Specific agent ID to import. If omitted and no identity exists in DB, auto-discovers NFTs owned by this wallet.".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -38,9 +39,10 @@ impl ImportIdentityTool {
         ImportIdentityTool {
             definition: ToolDefinition {
                 name: "import_identity".to_string(),
-                description: "Import an existing EIP-8004 identity NFT that was transferred to this wallet. \
-                    If agent_id is provided, verifies ownership and imports that specific identity. \
-                    If omitted, auto-discovers identity NFTs owned by this wallet via balanceOf + tokenOfOwnerByIndex."
+                description: "Get your agent identity. If identity already exists in the database, returns it. \
+                    Otherwise imports an on-chain EIP-8004 identity NFT. \
+                    If agent_id is provided, always imports/re-imports that specific identity from chain. \
+                    If omitted and identity exists in DB, returns existing identity (read mode)."
                     .to_string(),
                 input_schema: ToolInputSchema {
                     schema_type: "object".to_string(),
@@ -78,6 +80,39 @@ impl Tool for ImportIdentityTool {
             Ok(p) => p,
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
         };
+
+        // If no agent_id provided and a real identity exists in DB → return it (read mode)
+        if params.agent_id.is_none() {
+            if let Some(db) = &context.database {
+                if let Some(row) = db.get_agent_identity_full() {
+                    if row.agent_id > 0 {
+                        let reg = row.to_registration_file();
+                        let json_str = serde_json::to_string_pretty(&reg).unwrap_or_default();
+                        log::info!("[import_identity] Returning identity from DB (agent_id={})", row.agent_id);
+                        return ToolResult::success(format!(
+                            "=== Your Agent Identity ===\n\
+                            Agent ID: {}\n\
+                            Registry: {}\n\
+                            Chain ID: {}\n\
+                            Registration URI: {}\n\n\
+                            === Identity File ===\n{}",
+                            row.agent_id,
+                            &row.agent_registry,
+                            row.chain_id,
+                            row.registration_uri.as_deref().unwrap_or("(none)"),
+                            json_str,
+                        )).with_metadata(json!({
+                            "agent_id": row.agent_id,
+                            "name": row.name,
+                            "description": row.description,
+                            "registered": true,
+                            "registration_uri": row.registration_uri,
+                            "read_from_db": true,
+                        }));
+                    }
+                }
+            }
+        }
 
         // Get wallet address
         let wallet_provider = match &context.wallet_provider {
