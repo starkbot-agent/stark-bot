@@ -26,8 +26,8 @@ RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/li
 # Copy source code
 COPY . .
 
-# Build the application
-RUN cargo build --release -p stark-backend
+# Build all workspace binaries
+RUN cargo build --release -p stark-backend -p discord-tipping-service -p wallet-monitor-service
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -69,8 +69,10 @@ RUN curl -fsSL "https://github.com/supabase/cli/releases/download/v2.75.0/supaba
     | tar xz -C /usr/local/bin/ supabase \
     && chmod +x /usr/local/bin/supabase
 
-# Copy the binary
+# Copy the binaries
 COPY --from=backend-builder /app/target/release/stark-backend /app/stark-backend-bin
+COPY --from=backend-builder /app/target/release/discord-tipping-service /app/discord-tipping-service
+COPY --from=backend-builder /app/target/release/wallet-monitor-service /app/wallet-monitor-service
 
 # Copy the built frontend (dist folder)
 COPY --from=frontend-builder /app/stark-frontend/dist /app/stark-frontend/dist

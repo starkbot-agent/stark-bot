@@ -923,11 +923,6 @@ async fn main() -> std::io::Result<()> {
     // This runs before channel auto-start so restored channels can start
     // NOTE: Flash mode auto-retrieval happens later, after deriving the backup key from wallet signature
     let is_flash_mode = std::env::var("FLASH_KEYSTORE_URL").is_ok();
-    if !is_flash_mode {
-        if let Some(ref private_key) = config.burner_wallet_private_key {
-            auto_retrieve_from_keystore(&db, private_key).await;
-        }
-    }
 
     // Initialize Module Registry (compile-time plugin registry)
     let module_registry = modules::ModuleRegistry::new();
@@ -1057,10 +1052,7 @@ async fn main() -> std::io::Result<()> {
                     config.burner_wallet_private_key = Some(hex::encode(derived_key));
                     log::info!("Flash mode: derived backup encryption key from wallet signature");
 
-                    // Auto-retrieval: use wallet provider for keystore auth, derived key for decryption
-                    if let Some(ref private_key) = config.burner_wallet_private_key {
-                        auto_retrieve_from_keystore_with_provider(&db, private_key, wp).await;
-                    }
+                    // Auto-retrieval deferred to background task below
                 }
                 Err(e) => {
                     log::error!("Flash mode: failed to derive backup key: {}. Cloud backup will be unavailable.", e);
@@ -1117,10 +1109,6 @@ async fn main() -> std::io::Result<()> {
     let broadcaster = gateway.broadcaster();
     let channel_manager = gateway.channel_manager();
 
-    // Start enabled channels
-    log::info!("Starting enabled channels");
-    gateway.start_enabled_channels().await;
-
     // Initialize and start the scheduler
     log::info!("Initializing scheduler");
     let scheduler_config = SchedulerConfig::default();
@@ -1139,6 +1127,29 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(async move {
         scheduler_handle.start(scheduler_shutdown_rx).await;
     });
+
+    // Spawn slow network-dependent init in background so HTTP server starts immediately
+    {
+        let db_bg = db.clone();
+        let gateway_bg = gateway.clone();
+        let wallet_provider_bg = wallet_provider.clone();
+        let burner_key = config.burner_wallet_private_key.clone();
+        let is_flash = is_flash_mode;
+        tokio::spawn(async move {
+            // Keystore auto-retrieve (standard or flash mode)
+            if is_flash {
+                if let (Some(pk), Some(wp)) = (&burner_key, &wallet_provider_bg) {
+                    auto_retrieve_from_keystore_with_provider(&db_bg, pk, wp).await;
+                }
+            } else if let Some(ref pk) = burner_key {
+                auto_retrieve_from_keystore(&db_bg, pk).await;
+            }
+            // Start enabled channels (after keystore so restored channels are available)
+            log::info!("Starting enabled channels (background)");
+            gateway_bg.start_enabled_channels().await;
+            log::info!("All enabled channels started");
+        });
+    }
 
     // Spawn disk quota background scan task (re-scan every 60s, broadcast warnings via gateway)
     if let Some(ref dq) = disk_quota {
