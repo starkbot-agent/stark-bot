@@ -17,6 +17,7 @@ struct ModuleInfo {
     enabled: bool,
     has_tools: bool,
     has_dashboard: bool,
+    has_skill: bool,
     service_url: String,
     service_port: u16,
     installed_at: Option<String>,
@@ -84,6 +85,7 @@ async fn list_modules(data: web::Data<AppState>) -> HttpResponse {
             enabled: installed_entry.map(|e| e.enabled).unwrap_or(false),
             has_tools: module.has_tools(),
             has_dashboard: module.has_dashboard(),
+            has_skill: module.has_skill(),
             service_url: module.service_url(),
             service_port: module.default_port(),
             installed_at: installed_entry.map(|e| e.installed_at.to_rfc3339()),
@@ -149,6 +151,18 @@ async fn module_action(
         "uninstall" => {
             deactivate_module(&data, &name).await;
 
+            // Delete module skill
+            {
+                let registry = crate::modules::ModuleRegistry::new();
+                if let Some(module) = registry.get(&name) {
+                    if let Some(skill_md) = module.skill_content() {
+                        if let Ok((metadata, _)) = crate::skills::zip_parser::parse_skill_md(skill_md) {
+                            let _ = data.skill_registry.delete_skill(&metadata.name);
+                        }
+                    }
+                }
+            }
+
             match data.db.uninstall_module(&name) {
                 Ok(true) => HttpResponse::Ok().json(serde_json::json!({
                     "status": "uninstalled",
@@ -212,6 +226,19 @@ async fn module_action(
 
         "disable" => {
             deactivate_module(&data, &name).await;
+
+            // Disable module skill
+            {
+                let registry = crate::modules::ModuleRegistry::new();
+                if let Some(module) = registry.get(&name) {
+                    if let Some(skill_md) = module.skill_content() {
+                        if let Ok((metadata, _)) = crate::skills::zip_parser::parse_skill_md(skill_md) {
+                            data.skill_registry.set_enabled(&metadata.name, false);
+                        }
+                    }
+                }
+            }
+
             match data.db.set_module_enabled(&name, false) {
                 Ok(true) => HttpResponse::Ok().json(serde_json::json!({
                     "status": "disabled",

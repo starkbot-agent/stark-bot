@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Globe,
   Circle,
+  Zap,
 } from 'lucide-react';
 import Card, { CardContent } from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -23,6 +24,7 @@ interface ModuleInfo {
   enabled: boolean;
   has_tools: boolean;
   has_dashboard: boolean;
+  has_skill: boolean;
   service_url: string;
   service_port: number;
   installed_at: string | null;
@@ -220,6 +222,11 @@ export default function Modules() {
                         {module.has_dashboard && (
                           <span className="text-xs text-slate-300 bg-slate-700/50 px-2 py-1 rounded flex items-center gap-1">
                             <Globe className="w-3 h-3" /> Dashboard
+                          </span>
+                        )}
+                        {module.has_skill && (
+                          <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-1 rounded flex items-center gap-1">
+                            <Zap className="w-3 h-3" /> Skill
                           </span>
                         )}
                       </div>

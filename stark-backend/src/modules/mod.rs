@@ -53,6 +53,11 @@ pub trait Module: Send + Sync {
         None
     }
 
+    /// Whether this module provides a skill
+    fn has_skill(&self) -> bool {
+        self.skill_content().is_some()
+    }
+
     /// Return dashboard data as JSON (fetched from the service via RPC)
     async fn dashboard_data(&self, _db: &Database) -> Option<Value> {
         None

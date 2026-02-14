@@ -61,7 +61,7 @@ impl super::Module for DiscordTippingModule {
     }
 
     fn skill_content(&self) -> Option<&'static str> {
-        Some(include_str!("../../../skills/discord_tipping.md"))
+        Some(include_str!("../../../skills/inactive/discord_tipping.md"))
     }
 
     async fn dashboard_data(&self, _db: &Database) -> Option<Value> {

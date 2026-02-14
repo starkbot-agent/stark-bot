@@ -995,6 +995,23 @@ async fn main() -> std::io::Result<()> {
     });
     log::info!("Loaded {} skills from disk, {} total in database", skill_count, skill_registry.len());
 
+    // Load skills from enabled modules
+    {
+        let installed_modules = db.list_installed_modules().unwrap_or_default();
+        for entry in &installed_modules {
+            if entry.enabled {
+                if let Some(module) = module_registry.get(&entry.module_name) {
+                    if let Some(skill_md) = module.skill_content() {
+                        match skill_registry.create_skill_from_markdown(skill_md) {
+                            Ok(s) => log::info!("[MODULE] Loaded skill '{}' from module '{}'", s.name, entry.module_name),
+                            Err(e) => log::warn!("[MODULE] Failed to load skill from '{}': {}", entry.module_name, e),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Initialize Transaction Queue Manager with DB for persistent broadcast history
     // NOTE: Must be created before Gateway so channels can use it for web3 transactions
     log::info!("Initializing transaction queue manager");
