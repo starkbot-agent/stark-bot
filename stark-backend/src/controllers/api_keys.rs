@@ -462,6 +462,7 @@ fn sign_message(private_key: &str, message: &str) -> Result<String, String> {
 
     // Sign synchronously using the blocking runtime
     let handle = tokio::runtime::Handle::current();
+    let message = message.to_string();
     let signature = std::thread::spawn(move || {
         handle.block_on(async {
             wallet.sign_message(message).await
