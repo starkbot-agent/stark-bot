@@ -418,7 +418,7 @@ async fn restore_backup_data(
             }
             Err(e) => {
                 // Channel might already exist with same name/token - try to find it
-                if let Ok(existing) = db.list_enabled_channels() {
+                if let Ok(existing) = db.list_channels() {
                     if let Some(found) = existing.iter().find(|c| c.name == channel.name && c.channel_type == channel.channel_type) {
                         old_channel_to_new_id.insert(channel.id, found.id);
                         log::debug!("[Keystore] Channel {} already exists, mapping to existing", channel.name);

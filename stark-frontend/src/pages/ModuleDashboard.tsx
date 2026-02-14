@@ -64,7 +64,7 @@ export default function ModuleDashboard() {
         </div>
         {module?.has_dashboard && (
           <a
-            href={module.service_url}
+            href={`/api/modules/${encodeURIComponent(name!)}/proxy/`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
@@ -82,17 +82,17 @@ export default function ModuleDashboard() {
               <AlertCircle className="w-8 h-8" />
               <p>Unable to load the dashboard. The service may be offline.</p>
               <a
-                href={module.service_url}
+                href={`/api/modules/${encodeURIComponent(name!)}/proxy/`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-stark-400 hover:text-stark-300 underline text-sm"
               >
-                Try opening directly: {module.service_url}
+                Try opening via proxy
               </a>
             </div>
           ) : (
             <iframe
-              src={module.service_url}
+              src={`/api/modules/${encodeURIComponent(name!)}/proxy/`}
               className="w-full h-full border-0"
               title={`${formatModuleName(name!)} Dashboard`}
               onError={() => setIframeError(true)}

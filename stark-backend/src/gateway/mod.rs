@@ -74,9 +74,11 @@ impl Gateway {
         }
     }
 
-    /// Start all channels that have auto_start_on_boot setting enabled
+    /// Start all channels that have auto_start_on_boot setting enabled.
+    /// Queries ALL channels (not just enabled ones) so that channels which were
+    /// stopped before a reboot still auto-start if the setting is true.
     pub async fn start_enabled_channels(&self) {
-        match self.db.list_enabled_channels() {
+        match self.db.list_channels() {
             Ok(channels) => {
                 for channel in channels {
                     let id = channel.id;
@@ -102,6 +104,8 @@ impl Gateway {
 
                     match self.channel_manager.start_channel(channel).await {
                         Ok(()) => {
+                            // Mark channel as enabled in DB so it shows as running
+                            let _ = self.db.set_channel_enabled(id, true);
                             log::info!("Auto-started {} channel: {}", channel_type, name);
                         }
                         Err(e) => {
@@ -116,7 +120,7 @@ impl Gateway {
                 }
             }
             Err(e) => {
-                log::error!("Failed to load enabled channels: {}", e);
+                log::error!("Failed to load channels for auto-start: {}", e);
             }
         }
     }

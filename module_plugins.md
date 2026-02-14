@@ -9,11 +9,12 @@ starkbot-monorepo/
   stark-backend/            # Main bot (connects to modules via RPC)
   stark-frontend/           # Web UI (shows module list + links to dashboards)
 
-  wallet-monitor-types/     # Shared types (lib crate)
-  wallet-monitor-service/   # Standalone binary — port 9100
+  modules/
+    wallet-monitor-types/     # Shared types (lib crate)
+    wallet-monitor-service/   # Standalone binary — port 9100
 
-  discord-tipping-types/    # Shared types (lib crate)
-  discord-tipping-service/  # Standalone binary — port 9101
+    discord-tipping-types/    # Shared types (lib crate)
+    discord-tipping-service/  # Standalone binary — port 9101
 ```
 
 Each module consists of **two crates**:

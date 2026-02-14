@@ -4,7 +4,7 @@
 //! install/uninstall/enable/disable state in the bot's database and
 //! hot-registers/unregisters their tools at runtime.
 
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
 use crate::AppState;
 
@@ -354,6 +354,68 @@ async fn reload_modules(data: web::Data<AppState>) -> HttpResponse {
     }))
 }
 
+/// GET /api/modules/{name}/proxy/{path:.*} — reverse-proxy to the module's internal service.
+/// This allows the frontend iframe to reach module dashboards without exposing their ports.
+async fn module_proxy(
+    data: web::Data<AppState>,
+    path: web::Path<(String, String)>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let (name, sub_path) = path.into_inner();
+
+    let registry = crate::modules::ModuleRegistry::new();
+    let module = match registry.get(&name) {
+        Some(m) => m,
+        None => return HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Unknown module: '{}'", name)
+        })),
+    };
+
+    if !module.has_dashboard() {
+        return HttpResponse::NotFound().json(serde_json::json!({
+            "error": format!("Module '{}' does not have a dashboard", name)
+        }));
+    }
+
+    let target_url = if sub_path.is_empty() {
+        format!("{}/", module.service_url())
+    } else {
+        format!("{}/{}", module.service_url(), sub_path)
+    };
+
+    // Forward query string if present
+    let target_url = if let Some(qs) = req.uri().query() {
+        format!("{}?{}", target_url, qs)
+    } else {
+        target_url
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+
+    match client.get(&target_url).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let content_type = resp
+                .headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let body = resp.bytes().await.unwrap_or_default();
+
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY))
+                .content_type(content_type)
+                .body(body)
+        }
+        Err(e) => HttpResponse::BadGateway().json(serde_json::json!({
+            "error": format!("Could not reach module service: {}", e)
+        })),
+    }
+}
+
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/modules")
@@ -361,6 +423,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
             .route("/reload", web::post().to(reload_modules))
             .route("/{name}/dashboard", web::get().to(module_dashboard))
             .route("/{name}/status", web::get().to(module_status))
+            .route("/{name}/proxy/{path:.*}", web::get().to(module_proxy))
             .route("/{name}", web::post().to(module_action)),
     );
 }
