@@ -1,4 +1,5 @@
 use crate::channels::dispatcher::MessageDispatcher;
+use crate::channels::safe_mode_rate_limiter::SafeModeChannelRateLimiter;
 use crate::channels::types::{ChannelType, NormalizedMessage};
 use crate::channels::util;
 use crate::db::Database;
@@ -25,6 +26,7 @@ struct SlackAppState {
     bot_token: SlackApiToken,
     bot_user_id: String,
     admin_user_ids: Option<String>,
+    safe_mode_rate_limiter: SafeModeChannelRateLimiter,
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +146,36 @@ async fn fetch_chat_context(
     }
 
     Some(ctx)
+}
+
+// ---------------------------------------------------------------------------
+// User display name resolution via users.info API
+// ---------------------------------------------------------------------------
+
+async fn resolve_user_name(
+    client: &SlackHyperClient,
+    token: &SlackApiToken,
+    user_id: &str,
+) -> String {
+    let session = client.open_session(token);
+    let req = SlackApiUsersInfoRequest::new(SlackUserId::new(user_id.to_string()));
+    match session.users_info(&req).await {
+        Ok(resp) => {
+            // Prefer display_name from profile, fall back to real_name, then user.name
+            resp.user
+                .profile
+                .as_ref()
+                .and_then(|p| p.display_name.as_deref().filter(|s| !s.is_empty()))
+                .or(resp.user.real_name.as_deref())
+                .or(resp.user.name.as_deref())
+                .unwrap_or(user_id)
+                .to_string()
+        }
+        Err(e) => {
+            log::warn!("Slack: Failed to resolve display name for {}: {}", user_id, e);
+            user_id.to_string()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +454,22 @@ async fn process_slack_message(
         None => false,
     };
 
+    // Check safe mode rate limit for non-admin queries
+    if force_safe_mode {
+        if let Err(rate_limit_msg) = state.safe_mode_rate_limiter.check_and_record_query(&user_id, "slack") {
+            log::info!("Slack: Rate limiting user {} - {}", user_id, rate_limit_msg);
+            let _ = send_slack_message(
+                &client,
+                &state.bot_token,
+                &slack_channel,
+                &format!("\u{231b} {}", rate_limit_msg),
+                Some(&reply_thread_ts),
+            )
+            .await;
+            return;
+        }
+    }
+
     // Fetch chat context via conversations.history
     let message_text = match fetch_chat_context(
         &client,
@@ -434,9 +482,9 @@ async fn process_slack_message(
     {
         Some(mut ctx) => {
             ctx.push_str(&format!("\n[MESSAGE DIRECTED TO YOU:]\n{}", clean_text));
-            ctx
+            format!("[SLACK MESSAGE]\n\n{}", ctx)
         }
-        None => clean_text.clone(),
+        None => format!("[SLACK MESSAGE]\n\n{}", clean_text),
     };
 
     let normalized = NormalizedMessage {
@@ -746,7 +794,7 @@ fn handle_push_event(
                 }
 
                 let user_id = mention.user.to_string();
-                let user_name = user_id.clone(); // Slack doesn't include display name in event
+                let user_name = resolve_user_name(&client, &state.bot_token, &user_id).await;
                 let slack_channel = mention.channel;
                 let message_ts = mention.origin.ts;
                 let thread_ts = mention.origin.thread_ts;
@@ -822,7 +870,7 @@ fn handle_push_event(
                 };
                 let message_ts = msg_event.origin.ts;
                 let thread_ts = msg_event.origin.thread_ts;
-                let user_name = sender_id.clone();
+                let user_name = resolve_user_name(&client, &state.bot_token, &sender_id).await;
 
                 log::info!(
                     "Slack: DM from {} in {}: {}",
@@ -866,6 +914,7 @@ pub async fn start_slack_listener(
     dispatcher: Arc<MessageDispatcher>,
     broadcaster: Arc<EventBroadcaster>,
     db: Arc<Database>,
+    safe_mode_rate_limiter: SafeModeChannelRateLimiter,
     shutdown_rx: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     let channel_id = channel.id;
@@ -938,6 +987,7 @@ pub async fn start_slack_listener(
         bot_token,
         bot_user_id,
         admin_user_ids,
+        safe_mode_rate_limiter,
     };
 
     // Create listener environment with user state

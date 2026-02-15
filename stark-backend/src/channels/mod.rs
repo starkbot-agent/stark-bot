@@ -202,12 +202,14 @@ impl ChannelManager {
             }
             types::ChannelType::Slack => {
                 let db = self.db.clone();
+                let safe_mode_rate_limiter = SafeModeChannelRateLimiter::new(db.clone());
                 tokio::spawn(async move {
                     let result = slack::start_slack_listener(
                         channel,
                         dispatcher,
                         broadcaster.clone(),
                         db,
+                        safe_mode_rate_limiter,
                         shutdown_rx,
                     )
                     .await;

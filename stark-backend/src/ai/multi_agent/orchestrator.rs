@@ -243,6 +243,12 @@ impl Orchestrator {
             ));
         }
 
+        // Only include toolbox selection instructions when no subtype is active yet
+        if !self.context.subtype.is_selected() {
+            prompt.push_str(include_str!("prompts/toolbox_select.md"));
+            prompt.push_str("\n\n");
+        }
+
         prompt.push_str(base_prompt);
 
         // CodeEngineer-specific guidelines — injected when subtype is active
