@@ -43,6 +43,7 @@ impl Database {
         )?;
 
         let id = conn.last_insert_rowid();
+        self.cache.invalidate_channels();
 
         Ok(Channel {
             id,
@@ -134,11 +135,18 @@ impl Database {
             "DELETE FROM external_channels WHERE safe_mode = 1 AND created_at < ?1",
             [&cutoff],
         )?;
+        if deleted > 0 {
+            self.cache.invalidate_channels();
+        }
         Ok(deleted)
     }
 
     /// Get a channel by ID
     pub fn get_channel(&self, id: i64) -> SqliteResult<Option<Channel>> {
+        if let Some(cached) = self.cache.get_channel(id) {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
 
         let mut stmt = conn.prepare(
@@ -150,6 +158,7 @@ impl Database {
             .query_row([id], |row| Self::row_to_channel(row))
             .ok();
 
+        self.cache.set_channel(id, channel.clone());
         Ok(channel)
     }
 
@@ -172,6 +181,10 @@ impl Database {
 
     /// List only enabled channels
     pub fn list_enabled_channels(&self) -> SqliteResult<Vec<Channel>> {
+        if let Some(cached) = self.cache.get_enabled_channels() {
+            return Ok((*cached).clone());
+        }
+
         let conn = self.conn();
 
         let mut stmt = conn.prepare(
@@ -179,11 +192,12 @@ impl Database {
              FROM external_channels WHERE enabled = 1 ORDER BY channel_type, name",
         )?;
 
-        let channels = stmt
+        let channels: Vec<Channel> = stmt
             .query_map([], |row| Self::row_to_channel(row))?
             .filter_map(|r| r.ok())
             .collect();
 
+        self.cache.set_enabled_channels(channels.clone());
         Ok(channels)
     }
 
@@ -247,6 +261,7 @@ impl Database {
         conn.execute(&sql, params_ref.as_slice())?;
 
         drop(conn);
+        self.cache.invalidate_channels();
         self.get_channel(id)
     }
 
@@ -260,6 +275,7 @@ impl Database {
             rusqlite::params![if enabled { 1 } else { 0 }, &now, id],
         )?;
 
+        self.cache.invalidate_channels();
         Ok(rows_affected > 0)
     }
 
@@ -270,6 +286,7 @@ impl Database {
             "DELETE FROM external_channels WHERE id = ?1",
             [id],
         )?;
+        self.cache.invalidate_channels();
         Ok(rows_affected > 0)
     }
 
@@ -281,6 +298,7 @@ impl Database {
             "UPDATE external_channels SET safe_mode = ?1, updated_at = ?2 WHERE id = ?3",
             rusqlite::params![if safe_mode { 1 } else { 0 }, &now, id],
         )?;
+        self.cache.invalidate_channels();
         Ok(rows_affected > 0)
     }
 
@@ -306,6 +324,7 @@ impl Database {
         let conn = self.conn();
         // Only delete non-safe-mode channels; safe mode channels are temporary
         let rows_deleted = conn.execute("DELETE FROM external_channels WHERE safe_mode = 0", [])?;
+        self.cache.invalidate_channels();
         Ok(rows_deleted)
     }
 

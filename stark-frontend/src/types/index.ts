@@ -1,5 +1,5 @@
 // Message types
-export type MessageRole = 'user' | 'assistant' | 'system' | 'error' | 'command' | 'tool-indicator' | 'tool' | 'tool_call' | 'tool_result';
+export type MessageRole = 'user' | 'assistant' | 'system' | 'error' | 'hint' | 'command' | 'tool-indicator' | 'tool' | 'tool_call' | 'tool_result';
 
 export interface ChatMessage {
   id: string;

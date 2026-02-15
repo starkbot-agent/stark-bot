@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import { Wrench, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wrench, CheckCircle, XCircle, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
 import type { MessageRole } from '@/types';
 
 // Threshold for collapsing large content
@@ -208,6 +208,7 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
     assistant: 'bg-slate-800 text-slate-100',
     system: 'bg-slate-800/50 text-slate-300 border border-slate-700',
     error: 'bg-red-950/60 text-red-100 border border-red-900/50',
+    hint: 'bg-amber-950/40 text-amber-100 border border-amber-700/50',
     command: 'bg-slate-700 text-slate-200',
     'tool-indicator': 'bg-slate-700/80 text-amber-300 border border-slate-600',
     tool: 'bg-slate-850 text-slate-100 border border-slate-700/60',
@@ -234,6 +235,33 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
         >
           <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
           <span>{content}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Render hint messages with lightbulb icon
+  if (role === 'hint') {
+    return (
+      <div className="flex mb-4 justify-start">
+        <div
+          className={clsx(
+            'max-w-[80%] px-4 py-3 rounded-2xl rounded-bl-md flex items-start gap-3',
+            roleStyles[role]
+          )}
+        >
+          <Lightbulb className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <div
+              className="prose prose-sm prose-invert max-w-none leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }}
+            />
+            {timestamp && (
+              <p className="text-xs mt-2 text-amber-600/60">
+                {timestamp.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );

@@ -1,4 +1,4 @@
-use crate::skills::types::{SkillArgument, SkillMetadata};
+use crate::skills::types::{SkillApiKey, SkillArgument, SkillMetadata};
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
@@ -18,6 +18,7 @@ pub struct ParsedSkill {
     pub arguments: HashMap<String, SkillArgument>,
     pub tags: Vec<String>,
     pub subagent_type: Option<String>,
+    pub requires_api_keys: HashMap<String, SkillApiKey>,
     pub scripts: Vec<ParsedScript>,
 }
 
@@ -165,6 +166,7 @@ pub fn parse_skill_zip(data: &[u8]) -> Result<ParsedSkill, String> {
         arguments: metadata.arguments,
         tags: metadata.tags,
         subagent_type: metadata.subagent_type,
+        requires_api_keys: metadata.requires_api_keys,
         scripts,
     })
 }
@@ -209,11 +211,17 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<SkillMetadata, String> {
     let mut metadata = SkillMetadata::default();
     let mut current_key = String::new();
     let mut in_arguments = false;
+    let mut in_api_keys = false;
     let mut current_arg_name = String::new();
     let mut current_arg = SkillArgument {
         description: String::new(),
         required: false,
         default: None,
+    };
+    let mut current_api_key_name = String::new();
+    let mut current_api_key = SkillApiKey {
+        description: String::new(),
+        secret: true,
     };
 
     for line in yaml.lines() {
@@ -226,12 +234,23 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<SkillMetadata, String> {
         let indent = line.len() - line.trim_start().len();
 
         if indent == 0 {
+            // Flush pending argument/api_key before switching sections
+            if in_arguments && !current_arg_name.is_empty() {
+                metadata.arguments.insert(current_arg_name.clone(), current_arg.clone());
+                current_arg_name.clear();
+            }
+            if in_api_keys && !current_api_key_name.is_empty() {
+                metadata.requires_api_keys.insert(current_api_key_name.clone(), current_api_key.clone());
+                current_api_key_name.clear();
+            }
+
             // Top-level key
             if let Some((key, value)) = trimmed.split_once(':') {
                 let key = key.trim();
                 let value = value.trim();
                 current_key = key.to_string();
                 in_arguments = key == "arguments";
+                in_api_keys = key == "requires_api_keys";
 
                 match key {
                     "name" => metadata.name = unquote(value),
@@ -264,7 +283,7 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<SkillMetadata, String> {
                 }
             }
         } else if indent == 2 {
-            // Second-level (list items or argument names)
+            // Second-level (list items or argument/api_key names)
             if trimmed.starts_with("- ") {
                 let value = trimmed[2..].trim();
                 match current_key.as_str() {
@@ -288,25 +307,53 @@ fn parse_yaml_frontmatter(yaml: &str) -> Result<SkillMetadata, String> {
                         default: None,
                     };
                 }
+            } else if in_api_keys {
+                // API key name
+                if let Some((key_name, _)) = trimmed.split_once(':') {
+                    if !current_api_key_name.is_empty() {
+                        metadata.requires_api_keys.insert(current_api_key_name.clone(), current_api_key.clone());
+                    }
+                    current_api_key_name = key_name.trim().to_string();
+                    current_api_key = SkillApiKey {
+                        description: String::new(),
+                        secret: true,
+                    };
+                }
             }
-        } else if indent >= 4 && in_arguments {
-            // Argument properties
-            if let Some((key, value)) = trimmed.split_once(':') {
-                let key = key.trim();
-                let value = value.trim();
-                match key {
-                    "description" => current_arg.description = unquote(value),
-                    "required" => current_arg.required = value == "true",
-                    "default" => current_arg.default = Some(unquote(value)),
-                    _ => {}
+        } else if indent >= 4 {
+            if in_arguments {
+                // Argument properties
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    let key = key.trim();
+                    let value = value.trim();
+                    match key {
+                        "description" => current_arg.description = unquote(value),
+                        "required" => current_arg.required = value == "true",
+                        "default" => current_arg.default = Some(unquote(value)),
+                        _ => {}
+                    }
+                }
+            } else if in_api_keys {
+                // API key properties
+                if let Some((key, value)) = trimmed.split_once(':') {
+                    let key = key.trim();
+                    let value = value.trim();
+                    match key {
+                        "description" => current_api_key.description = unquote(value),
+                        "secret" => current_api_key.secret = value != "false",
+                        _ => {}
+                    }
                 }
             }
         }
     }
 
-    // Don't forget the last argument
+    // Don't forget the last argument/api_key
     if in_arguments && !current_arg_name.is_empty() {
         metadata.arguments.insert(current_arg_name, current_arg);
+    }
+    if in_api_keys && !current_api_key_name.is_empty() {
+        metadata.requires_api_keys.insert(current_api_key_name, current_api_key);
     }
 
     Ok(metadata)

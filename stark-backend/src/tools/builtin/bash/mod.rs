@@ -3,6 +3,7 @@
 //! Tools for shell operations, file searching, and file manipulation.
 
 mod apply_patch;
+mod claude_code_remote;
 mod delete_file;
 mod edit_file;
 mod exec;
@@ -16,6 +17,7 @@ mod rename_file;
 mod write_file;
 
 pub use apply_patch::ApplyPatchTool;
+pub use claude_code_remote::ClaudeCodeRemoteTool;
 pub use delete_file::DeleteFileTool;
 pub use edit_file::EditFileTool;
 pub use exec::ExecTool;

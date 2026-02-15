@@ -9,6 +9,10 @@ use super::super::Database;
 impl Database {
     /// Get global tool config (channel_id = NULL)
     pub fn get_global_tool_config(&self) -> SqliteResult<Option<ToolConfig>> {
+        if let Some(cached) = self.cache.get_global_tool_config() {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, profile, allow_list, deny_list, allowed_groups, denied_groups
@@ -35,11 +39,16 @@ impl Database {
             })
             .ok();
 
+        self.cache.set_global_tool_config(config.clone());
         Ok(config)
     }
 
     /// Get tool config for a specific channel
     pub fn get_channel_tool_config(&self, channel_id: i64) -> SqliteResult<Option<ToolConfig>> {
+        if let Some(cached) = self.cache.get_channel_tool_config(channel_id) {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, channel_id, profile, allow_list, deny_list, allowed_groups, denied_groups
@@ -66,6 +75,7 @@ impl Database {
             })
             .ok();
 
+        self.cache.set_channel_tool_config(channel_id, config.clone());
         Ok(config)
     }
 
@@ -144,6 +154,7 @@ impl Database {
             )?;
         }
 
+        self.cache.invalidate_tool_configs();
         Ok(conn.last_insert_rowid())
     }
 

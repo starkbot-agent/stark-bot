@@ -117,6 +117,8 @@ impl SetAgentSubtypeTool {
                  • full-dev-workflow — End-to-end dev workflow (branch, code, test, PR, deploy)\n\n\
                  Testing:\n\
                  • test — Run tests, detect framework, and analyze failures\n\n\
+                 Remote:\n\
+                 • claude_code — Delegate tasks to Claude Code on a remote machine via SSH\n\n\
                  Deployment & Infrastructure:\n\
                  • vercel — Deploy and manage projects on Vercel\n\
                  • cloudflare_dns — Manage Cloudflare DNS records (all types, zones, search, bulk ops)\n\
@@ -125,13 +127,14 @@ impl SetAgentSubtypeTool {
                  👉 Pick the matching skill and follow its instructions.\n\n\
                  ## Low-level tools (only when no skill fits)\n\
                  grep, glob, edit_file, write_file, delete_file, rename_file, git, exec,\n\
-                 read_symbol, verify_changes, index_project, modify_kanban\n\n\
+                 read_symbol, verify_changes, index_project, workstream, claude_code_remote\n\n\
                  ## Smart Workflow\n\
                  • Use `index_project` first on unfamiliar codebases to understand the structure.\n\
                  • Use `read_symbol` to inspect specific functions/structs without reading entire files.\n\
                  • After editing code, ALWAYS use `verify_changes` to confirm it compiles.\n\
                  • Use `verify_changes` with checks='test' to run the full test suite.\n\
-                 • Check `modify_kanban(action: \"list\")` for queued tasks. Use `pick_task` to grab work and `update_status` to mark complete."
+                 • Check `workstream(action: \"list\")` for queued tasks. Use `pick_task` to grab work and `update_status` to mark complete.\n\
+                 • Use `workstream(action: \"schedule\", ...)` to create scheduled/recurring cron jobs."
                     .to_string()
             }
             AgentSubtype::Secretary => {
@@ -144,8 +147,7 @@ impl SetAgentSubtypeTool {
                  • discord — Send messages and interact on Discord\n\
                  • 4claw — Post and browse threads on 4claw imageboard for agents\n\
                  • x402book — Publish content with micropayments on x402book\n\
-                 • journal — Write journal entries, notes, and documentation\n\
-                 • scheduling — Create scheduled/recurring tasks (cron jobs, reminders)\n\n\
+                 • journal — Write journal entries, notes, and documentation\n\n\
                  👉 Pick the matching skill and follow its instructions.\n\n\
                  ## Low-level tools (only when no skill fits)\n\
                  agent_send, memory_search, memory_read"

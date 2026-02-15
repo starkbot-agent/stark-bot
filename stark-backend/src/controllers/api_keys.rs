@@ -51,6 +51,16 @@ pub enum ApiKeyId {
     CloudflareApiToken,
     #[strum(serialize = "ALCHEMY_API_KEY")]
     AlchemyApiKey,
+    #[strum(serialize = "XAI_API_KEY")]
+    XaiApiKey,
+    #[strum(serialize = "CLAUDE_CODE_SSH_HOST")]
+    ClaudeCodeSshHost,
+    #[strum(serialize = "CLAUDE_CODE_SSH_USER")]
+    ClaudeCodeSshUser,
+    #[strum(serialize = "CLAUDE_CODE_SSH_KEY")]
+    ClaudeCodeSshKey,
+    #[strum(serialize = "CLAUDE_CODE_SSH_PORT")]
+    ClaudeCodeSshPort,
 }
 
 impl ApiKeyId {
@@ -72,6 +82,11 @@ impl ApiKeyId {
             Self::SupabaseAccessToken => "SUPABASE_ACCESS_TOKEN",
             Self::CloudflareApiToken => "CLOUDFLARE_API_TOKEN",
             Self::AlchemyApiKey => "ALCHEMY_API_KEY",
+            Self::XaiApiKey => "XAI_API_KEY",
+            Self::ClaudeCodeSshHost => "CLAUDE_CODE_SSH_HOST",
+            Self::ClaudeCodeSshUser => "CLAUDE_CODE_SSH_USER",
+            Self::ClaudeCodeSshKey => "CLAUDE_CODE_SSH_KEY",
+            Self::ClaudeCodeSshPort => "CLAUDE_CODE_SSH_PORT",
         }
     }
 
@@ -92,6 +107,11 @@ impl ApiKeyId {
             Self::SupabaseAccessToken => Some(&["SUPABASE_ACCESS_TOKEN"]),
             Self::CloudflareApiToken => Some(&["CLOUDFLARE_API_TOKEN"]),
             Self::AlchemyApiKey => Some(&["ALCHEMY_API_KEY"]),
+            Self::XaiApiKey => Some(&["XAI_API_KEY"]),
+            Self::ClaudeCodeSshHost => None,
+            Self::ClaudeCodeSshUser => None,
+            Self::ClaudeCodeSshKey => None,
+            Self::ClaudeCodeSshPort => None,
         }
     }
 
@@ -127,159 +147,198 @@ impl ApiKeyId {
 /// Configuration for a single key within a service group
 #[derive(Debug, Clone, Serialize)]
 pub struct KeyConfig {
-    pub name: &'static str,
-    pub label: &'static str,
+    pub name: String,
+    pub label: String,
     pub secret: bool,
 }
 
 /// Configuration for a service group (e.g., "github" groups GITHUB_TOKEN)
 #[derive(Debug, Clone, Serialize)]
 pub struct ServiceConfig {
-    pub group: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub url: &'static str,
+    pub group: String,
+    pub label: String,
+    pub description: String,
+    pub url: String,
     pub keys: Vec<KeyConfig>,
 }
 
-/// Get all service configurations
+/// Get all hardcoded service configurations
 pub fn get_service_configs() -> Vec<ServiceConfig> {
     vec![
         ServiceConfig {
-            group: "alchemy",
-            label: "Alchemy",
-            description: "Blockchain RPC provider for wallet monitoring. Create a free app to get an API key.",
-            url: "https://dashboard.alchemy.com/apps",
+            group: "alchemy".into(),
+            label: "Alchemy".into(),
+            description: "Blockchain RPC provider for wallet monitoring. Create a free app to get an API key.".into(),
+            url: "https://dashboard.alchemy.com/apps".into(),
             keys: vec![KeyConfig {
-                name: "ALCHEMY_API_KEY",
-                label: "API Key",
+                name: "ALCHEMY_API_KEY".into(),
+                label: "API Key".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "github",
-            label: "GitHub",
-            description: "Create a Personal Access Token with repo scope",
-            url: "https://github.com/settings/tokens",
+            group: "github".into(),
+            label: "GitHub".into(),
+            description: "Create a Personal Access Token with repo scope".into(),
+            url: "https://github.com/settings/tokens".into(),
             keys: vec![KeyConfig {
-                name: "GITHUB_TOKEN",
-                label: "Personal Access Token",
+                name: "GITHUB_TOKEN".into(),
+                label: "Personal Access Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "moltx",
-            label: "MoltX",
-            description: "X for agents. Get an API key from moltx.io after registering your agent.",
-            url: "https://moltx.io",
+            group: "moltx".into(),
+            label: "MoltX".into(),
+            description: "X for agents. Get an API key from moltx.io after registering your agent.".into(),
+            url: "https://moltx.io".into(),
             keys: vec![KeyConfig {
-                name: "MOLTX_API_KEY",
-                label: "API Key",
+                name: "MOLTX_API_KEY".into(),
+                label: "API Key".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "bankr",
-            label: "Bankr",
-            description: "Generate an API key with Agent API access enabled",
-            url: "https://bankr.bot/api",
+            group: "bankr".into(),
+            label: "Bankr".into(),
+            description: "Generate an API key with Agent API access enabled".into(),
+            url: "https://bankr.bot/api".into(),
             keys: vec![KeyConfig {
-                name: "BANKR_API_KEY",
-                label: "API Key",
+                name: "BANKR_API_KEY".into(),
+                label: "API Key".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "moltbook",
-            label: "Moltbook",
-            description: "Social network for AI agents. Register via API or get token from moltbook.com",
-            url: "https://www.moltbook.com",
+            group: "moltbook".into(),
+            label: "Moltbook".into(),
+            description: "Social network for AI agents. Register via API or get token from moltbook.com".into(),
+            url: "https://www.moltbook.com".into(),
             keys: vec![KeyConfig {
-                name: "MOLTBOOK_TOKEN",
-                label: "API Token",
+                name: "MOLTBOOK_TOKEN".into(),
+                label: "API Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "4claw",
-            label: "4claw",
-            description: "4claw network for AI agents. Get your API token from 4claw.org",
-            url: "https://4claw.org",
+            group: "4claw".into(),
+            label: "4claw".into(),
+            description: "4claw network for AI agents. Get your API token from 4claw.org".into(),
+            url: "https://4claw.org".into(),
             keys: vec![KeyConfig {
-                name: "FOURCLAW_TOKEN",
-                label: "API Token",
+                name: "FOURCLAW_TOKEN".into(),
+                label: "API Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "x402book",
-            label: "x402book",
-            description: "x402book network for AI agents. Get your API token from x402book.com",
-            url: "https://api.x402book.com",
+            group: "x402book".into(),
+            label: "x402book".into(),
+            description: "x402book network for AI agents. Get your API token from x402book.com".into(),
+            url: "https://api.x402book.com".into(),
             keys: vec![KeyConfig {
-                name: "X402BOOK_TOKEN",
-                label: "API Token",
+                name: "X402BOOK_TOKEN".into(),
+                label: "API Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "railway",
-            label: "Railway",
-            description: "Deploy and manage infrastructure via Railway. Create an API token from your Railway account.",
-            url: "https://railway.com/account/tokens",
+            group: "railway".into(),
+            label: "Railway".into(),
+            description: "Deploy and manage infrastructure via Railway. Create an API token from your Railway account.".into(),
+            url: "https://railway.com/account/tokens".into(),
             keys: vec![KeyConfig {
-                name: "RAILWAY_TOKEN",
-                label: "API Token",
+                name: "RAILWAY_TOKEN".into(),
+                label: "API Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "supabase",
-            label: "Supabase",
-            description: "Manage Supabase projects. Create a Personal Access Token from your dashboard.",
-            url: "https://supabase.com/dashboard/account/tokens",
+            group: "supabase".into(),
+            label: "Supabase".into(),
+            description: "Manage Supabase projects. Create a Personal Access Token from your dashboard.".into(),
+            url: "https://supabase.com/dashboard/account/tokens".into(),
             keys: vec![KeyConfig {
-                name: "SUPABASE_ACCESS_TOKEN",
-                label: "Personal Access Token",
+                name: "SUPABASE_ACCESS_TOKEN".into(),
+                label: "Personal Access Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "cloudflare",
-            label: "Cloudflare",
-            description: "Manage Cloudflare Workers, Pages, and DNS. Create an API token from your dashboard.",
-            url: "https://dash.cloudflare.com/profile/api-tokens",
+            group: "cloudflare".into(),
+            label: "Cloudflare".into(),
+            description: "Manage Cloudflare Workers, Pages, and DNS. Create an API token from your dashboard.".into(),
+            url: "https://dash.cloudflare.com/profile/api-tokens".into(),
             keys: vec![KeyConfig {
-                name: "CLOUDFLARE_API_TOKEN",
-                label: "API Token",
+                name: "CLOUDFLARE_API_TOKEN".into(),
+                label: "API Token".into(),
                 secret: true,
             }],
         },
         ServiceConfig {
-            group: "twitter",
-            label: "Twitter/X",
-            description: "OAuth 1.0a credentials for posting tweets. Get all 4 keys from your Twitter Developer App's 'Keys and Tokens' tab.",
-            url: "https://developer.twitter.com/en/portal/projects-and-apps",
+            group: "twitter".into(),
+            label: "Twitter/X".into(),
+            description: "OAuth 1.0a credentials for posting tweets. Get all 4 keys from your Twitter Developer App's 'Keys and Tokens' tab.".into(),
+            url: "https://developer.twitter.com/en/portal/projects-and-apps".into(),
             keys: vec![
                 KeyConfig {
-                    name: "TWITTER_CONSUMER_KEY",
-                    label: "API Key (Consumer Key)",
+                    name: "TWITTER_CONSUMER_KEY".into(),
+                    label: "API Key (Consumer Key)".into(),
                     secret: true,
                 },
                 KeyConfig {
-                    name: "TWITTER_CONSUMER_SECRET",
-                    label: "API Secret (Consumer Secret)",
+                    name: "TWITTER_CONSUMER_SECRET".into(),
+                    label: "API Secret (Consumer Secret)".into(),
                     secret: true,
                 },
                 KeyConfig {
-                    name: "TWITTER_ACCESS_TOKEN",
-                    label: "Access Token",
+                    name: "TWITTER_ACCESS_TOKEN".into(),
+                    label: "Access Token".into(),
                     secret: true,
                 },
                 KeyConfig {
-                    name: "TWITTER_ACCESS_TOKEN_SECRET",
-                    label: "Access Token Secret",
+                    name: "TWITTER_ACCESS_TOKEN_SECRET".into(),
+                    label: "Access Token Secret".into(),
                     secret: true,
+                },
+            ],
+        },
+        ServiceConfig {
+            group: "xai".into(),
+            label: "xAI (Grok)".into(),
+            description: "xAI API key for Grok web and X/Twitter search. Create an API key from the xAI console.".into(),
+            url: "https://console.x.ai/".into(),
+            keys: vec![KeyConfig {
+                name: "XAI_API_KEY".into(),
+                label: "API Key".into(),
+                secret: true,
+            }],
+        },
+        ServiceConfig {
+            group: "claude_code".into(),
+            label: "Claude Code".into(),
+            description: "SSH connection to a remote machine running Claude Code CLI. Configure host, user, key path, and port.".into(),
+            url: "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview".into(),
+            keys: vec![
+                KeyConfig {
+                    name: "CLAUDE_CODE_SSH_HOST".into(),
+                    label: "SSH Host".into(),
+                    secret: false,
+                },
+                KeyConfig {
+                    name: "CLAUDE_CODE_SSH_USER".into(),
+                    label: "SSH User".into(),
+                    secret: false,
+                },
+                KeyConfig {
+                    name: "CLAUDE_CODE_SSH_KEY".into(),
+                    label: "SSH Private Key".into(),
+                    secret: true,
+                },
+                KeyConfig {
+                    name: "CLAUDE_CODE_SSH_PORT".into(),
+                    label: "SSH Port".into(),
+                    secret: false,
                 },
             ],
         },
@@ -293,15 +352,11 @@ pub fn get_valid_key_names() -> Vec<&'static str> {
 }
 
 /// Get key config by key name
-pub fn get_key_config(key_name: &str) -> Option<(&'static str, KeyConfig)> {
+pub fn get_key_config(key_name: &str) -> Option<(String, KeyConfig)> {
     for config in get_service_configs() {
         for key in &config.keys {
             if key.name == key_name {
-                return Some((config.group, KeyConfig {
-                    name: key.name,
-                    label: key.label,
-                    secret: key.secret,
-                }));
+                return Some((config.group.clone(), key.clone()));
             }
         }
     }
@@ -505,9 +560,52 @@ async fn get_configs(state: web::Data<AppState>, req: HttpRequest) -> impl Respo
         return resp;
     }
 
+    let mut configs = get_service_configs();
+
+    // Collect all hardcoded key names for deduplication
+    let hardcoded_keys: std::collections::HashSet<String> = configs
+        .iter()
+        .flat_map(|c| c.keys.iter().map(|k| k.name.clone()))
+        .collect();
+
+    // Append dynamic keys from enabled skills
+    if let Ok(skills) = state.db.list_enabled_skills() {
+        for skill in skills {
+            if skill.requires_api_keys.is_empty() {
+                continue;
+            }
+
+            // Build keys list, skipping any that duplicate hardcoded keys
+            let keys: Vec<KeyConfig> = skill
+                .requires_api_keys
+                .iter()
+                .filter(|(name, _)| !hardcoded_keys.contains(*name))
+                .map(|(name, api_key)| KeyConfig {
+                    name: name.clone(),
+                    label: if api_key.description.is_empty() {
+                        name.clone()
+                    } else {
+                        api_key.description.clone()
+                    },
+                    secret: api_key.secret,
+                })
+                .collect();
+
+            if !keys.is_empty() {
+                configs.push(ServiceConfig {
+                    group: format!("skill_{}", skill.name),
+                    label: format!("Skill: {}", skill.name),
+                    description: skill.description.clone(),
+                    url: skill.homepage.unwrap_or_default(),
+                    keys,
+                });
+            }
+        }
+    }
+
     HttpResponse::Ok().json(ServiceConfigsResponse {
         success: true,
-        configs: get_service_configs(),
+        configs,
     })
 }
 
@@ -1034,6 +1132,7 @@ async fn backup_to_cloud(state: web::Data<AppState>, req: HttpRequest) -> impl R
                     arguments: serde_json::to_string(&skill.arguments).unwrap_or_default(),
                     tags: skill.tags,
                     subagent_type: skill.subagent_type,
+                    requires_api_keys: serde_json::to_string(&skill.requires_api_keys).unwrap_or_default(),
                     scripts,
                 });
             }
@@ -1620,6 +1719,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             Some(settings.guest_dashboard_enabled),
             settings.theme_accent.as_deref(),
             None, // Don't restore proxy_url - it's infrastructure config
+            None, // Don't restore kanban_auto_execute - keep current setting
         ) {
             log::warn!("Failed to restore bot settings: {}", e);
         }
@@ -1892,6 +1992,9 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
         let arguments: std::collections::HashMap<String, crate::skills::types::SkillArgument> =
             serde_json::from_str(&skill_entry.arguments).unwrap_or_default();
 
+        let requires_api_keys: std::collections::HashMap<String, crate::skills::types::SkillApiKey> =
+            serde_json::from_str(&skill_entry.requires_api_keys).unwrap_or_default();
+
         let db_skill = crate::skills::DbSkill {
             id: None,
             name: skill_entry.name.clone(),
@@ -1907,6 +2010,7 @@ async fn restore_from_cloud(state: web::Data<AppState>, req: HttpRequest) -> imp
             arguments,
             tags: skill_entry.tags.clone(),
             subagent_type: skill_entry.subagent_type.clone(),
+            requires_api_keys,
             created_at: now.clone(),
             updated_at: now.clone(),
         };

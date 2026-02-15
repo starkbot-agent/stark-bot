@@ -8,6 +8,10 @@ use super::super::Database;
 impl Database {
     /// Get all settings for a channel
     pub fn get_channel_settings(&self, channel_id: i64) -> SqliteResult<Vec<ChannelSetting>> {
+        if let Some(cached) = self.cache.get_channel_settings(channel_id) {
+            return Ok((*cached).clone());
+        }
+
         let conn = self.conn();
 
         let mut stmt = conn.prepare(
@@ -15,7 +19,7 @@ impl Database {
              FROM channel_settings WHERE channel_id = ?1",
         )?;
 
-        let settings = stmt
+        let settings: Vec<ChannelSetting> = stmt
             .query_map([channel_id], |row| {
                 Ok(ChannelSetting {
                     channel_id: row.get(0)?,
@@ -26,11 +30,16 @@ impl Database {
             .filter_map(|r| r.ok())
             .collect();
 
+        self.cache.set_channel_settings(channel_id, settings.clone());
         Ok(settings)
     }
 
     /// Get a single setting value for a channel
     pub fn get_channel_setting(&self, channel_id: i64, key: &str) -> SqliteResult<Option<String>> {
+        if let Some(cached) = self.cache.get_channel_setting_value(channel_id, key) {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
 
         let value = conn
@@ -41,6 +50,7 @@ impl Database {
             )
             .ok();
 
+        self.cache.set_channel_setting_value(channel_id, key, value.clone());
         Ok(value)
     }
 
@@ -62,6 +72,7 @@ impl Database {
             rusqlite::params![channel_id, key, value],
         )?;
 
+        self.cache.invalidate_channel_settings(channel_id);
         Ok(())
     }
 
@@ -72,6 +83,7 @@ impl Database {
             "DELETE FROM channel_settings WHERE channel_id = ?1 AND setting_key = ?2",
             rusqlite::params![channel_id, key],
         )?;
+        self.cache.invalidate_channel_settings(channel_id);
         Ok(rows_affected > 0)
     }
 
@@ -82,6 +94,7 @@ impl Database {
             "DELETE FROM channel_settings WHERE channel_id = ?1",
             [channel_id],
         )?;
+        self.cache.invalidate_channel_settings(channel_id);
         Ok(rows_affected)
     }
 
@@ -104,6 +117,7 @@ impl Database {
             )?;
         }
 
+        self.cache.invalidate_channel_settings(channel_id);
         Ok(())
     }
 
@@ -133,6 +147,7 @@ impl Database {
     pub fn clear_channel_settings_for_restore(&self) -> SqliteResult<usize> {
         let conn = self.conn();
         let rows_deleted = conn.execute("DELETE FROM channel_settings", [])?;
+        self.cache.invalidate_all_channel_settings();
         Ok(rows_deleted)
     }
 }

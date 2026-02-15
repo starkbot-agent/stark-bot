@@ -23,14 +23,14 @@ mod web_fetch;
 
 // Re-exports from submodules
 pub use bash::{
-    ApplyPatchTool, DeleteFileTool, EditFileTool, ExecTool, GitTool, GlobTool, GrepTool,
-    ListFilesTool, ReadFileTool, ReadSymbolTool, RenameFileTool, WriteFileTool,
+    ApplyPatchTool, ClaudeCodeRemoteTool, DeleteFileTool, EditFileTool, ExecTool, GitTool,
+    GlobTool, GrepTool, ListFilesTool, ReadFileTool, ReadSymbolTool, RenameFileTool, WriteFileTool,
 };
 pub use code::{CommitterTool, DeployTool, IndexProjectTool, PrQualityTool, VerifyChangesTool};
 pub use core::{
     AddTaskTool, DefineTasksTool, AgentSendTool, ApiKeysCheckTool, AskUserTool, HeartbeatConfigTool,
     ImportIdentityTool, InstallApiKeyTool, ManageModulesTool, ManageSkillsTool, MindmapManageTool,
-    ReadSkillTool, RegisterNewIdentityTool, ModifyKanbanTool, ModifySoulTool, SayToUserTool,
+    ReadSkillTool, RegisterNewIdentityTool, WorkstreamTool, ModifySoulTool, SayToUserTool,
     SetAgentSubtypeTool, SubagentStatusTool, SubagentTool, TaskFullyCompletedTool,
 };
 pub use cryptocurrency::{

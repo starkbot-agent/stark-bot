@@ -92,16 +92,15 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
   const mainItems = [
     { to: '/dashboard', icon: Home, label: 'Dashboard' },
     { to: '/agent-chat', icon: MessageSquare, label: 'Agent Chat' },
-    { to: '/agent-settings', icon: Settings, label: 'Agent Settings' },
-    { to: '/bot-settings', icon: Bot, label: 'Bot Settings' },
-    { to: '/crypto-transactions', icon: Wallet, label: 'Crypto Transactions' },
-    { to: '/tools', icon: Wrench, label: 'Tools' },
-    { to: '/skills', icon: Zap, label: 'Skills' },
+    { to: '/workstream', icon: Columns, label: 'Workstream' },
+    { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
+    { to: '/mindmap', icon: Network, label: 'Mind Map' },
   ];
 
   const configItems = [
+    { to: '/agent-settings', icon: Settings, label: 'Agent Settings' },
+    { to: '/bot-settings', icon: Bot, label: 'Bot Settings' },
     { to: '/channels', icon: Monitor, label: 'Channels' },
-    { to: '/heartbeat', icon: Heart, label: 'Heartbeat' },
     { to: '/scheduling', icon: Clock, label: 'Scheduling' },
     { to: '/api-keys', icon: Key, label: 'API Keys' },
     { to: '/cloud-backup', icon: Cloud, label: 'Cloud Backup' },
@@ -110,15 +109,16 @@ export default function MobileNavDrawer({ isOpen, onClose }: MobileNavDrawerProp
   const dataItems = [
     { to: '/sessions', icon: Calendar, label: 'Chat Sessions' },
     { to: '/memories', icon: Brain, label: 'Memory Browser' },
-    { to: '/mindmap', icon: Network, label: 'Mind Map' },
-    { to: '/kanban', icon: Columns, label: 'Kanban Board' },
     { to: '/identities', icon: Users, label: 'Identities' },
     { to: '/files', icon: FolderOpen, label: 'Workspace Files' },
+    { to: '/crypto-transactions', icon: Wallet, label: 'Crypto Transactions' },
     { to: '/system-files', icon: Sparkles, label: 'System Files' },
     { to: '/journal', icon: BookOpen, label: 'Journal' },
   ];
 
   const devItems = [
+    { to: '/tools', icon: Wrench, label: 'Tools' },
+    { to: '/skills', icon: Zap, label: 'Skills' },
     { to: '/logs', icon: ScrollText, label: 'Live Logs' },
     { to: '/debug', icon: Bug, label: 'Debug' },
     { to: '/payments', icon: DollarSign, label: 'Payments' },

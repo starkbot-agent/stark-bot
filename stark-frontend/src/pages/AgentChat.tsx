@@ -523,27 +523,62 @@ export default function AgentChat() {
       console.error('[Agent] Error:', event.error);
       setIsLoading(false);
 
-      // Check if this is an x402 payment failure with low balance
       const errorLower = event.error.toLowerCase();
-      const isX402Failure = errorLower.includes('x402') || errorLower.includes('402') || errorLower.includes('payment');
-      const balanceNum = usdcBalance ? parseFloat(usdcBalance) : null;
-      const isLowBalance = balanceNum !== null && balanceNum < 0.1;
+      const ts = new Date(event.timestamp);
 
-      let content = `⚠️ ${event.error}`;
-      if (isX402Failure && isLowBalance) {
-        content += `\n\n💰 Your USDC balance on Base is ${balanceNum.toFixed(4)} USDC — you need to add funds to use this x402 agent endpoint.`;
-      }
+      setMessages((prev) => {
+        const newMessages: ChatMessageType[] = [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: 'system' as MessageRole,
+            content: `⚠️ ${event.error}`,
+            timestamp: ts,
+            sessionId,
+          },
+        ];
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: 'system' as MessageRole,
-          content,
-          timestamp: new Date(event.timestamp),
-          sessionId,
-        },
-      ]);
+        // Detect AI endpoint errors that warrant a hint
+        const isServerError = /\b(50[0-9]|502|503|504)\b/.test(event.error)
+          || errorLower.includes('bad gateway')
+          || errorLower.includes('service unavailable')
+          || errorLower.includes('gateway timeout')
+          || errorLower.includes('internal server error');
+        const isConnectionError = errorLower.includes('connection refused')
+          || errorLower.includes('connection reset')
+          || errorLower.includes('econnrefused')
+          || errorLower.includes('timed out');
+        const isX402Failure = errorLower.includes('x402')
+          || errorLower.includes('402')
+          || errorLower.includes('payment');
+        const isAuthError = errorLower.includes('401')
+          || errorLower.includes('403')
+          || errorLower.includes('unauthorized')
+          || errorLower.includes('forbidden');
+
+        if (isServerError || isConnectionError || isX402Failure || isAuthError) {
+          const balanceNum = usdcBalance ? parseFloat(usdcBalance) : null;
+          const isLowBalance = balanceNum !== null && balanceNum < 0.1;
+
+          let hint = '**Tip:** Go to **Agent Settings** and try switching to a different AI model or endpoint.';
+          if (isX402Failure || isLowBalance) {
+            const balanceStr = balanceNum !== null ? ` (current balance: ${balanceNum.toFixed(4)} USDC)` : '';
+            hint += `\n\nAlso make sure you have enough **USDC on Base** to cover x402 endpoint micropayments${balanceStr}.`;
+          } else if (isServerError || isConnectionError) {
+            hint += '\n\nIf you\'re using an x402 pay-per-call endpoint, also check your **USDC balance on Base** — insufficient funds can cause failures.';
+          }
+
+          newMessages.push({
+            id: crypto.randomUUID(),
+            role: 'hint' as MessageRole,
+            content: hint,
+            timestamp: ts,
+            sessionId,
+          });
+        }
+
+        return newMessages;
+      });
     };
 
     const handleWarning = (data: unknown) => {
@@ -1280,15 +1315,40 @@ export default function AgentChat() {
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to send message';
-      const errorLower = errorMsg.toLowerCase();
-      const isX402Failure = errorLower.includes('x402') || errorLower.includes('402') || errorLower.includes('payment');
-      const balanceNum = usdcBalance ? parseFloat(usdcBalance) : null;
-      const isLowBalance = balanceNum !== null && balanceNum < 0.1;
+      addMessage('error', errorMsg);
 
-      if (isX402Failure && isLowBalance) {
-        addMessage('error', `${errorMsg}\n\n💰 Your USDC balance on Base is ${balanceNum!.toFixed(4)} USDC — you need to add funds to use this x402 agent endpoint.`);
-      } else {
-        addMessage('error', errorMsg);
+      // Detect AI endpoint errors that warrant a hint
+      const errorLower = errorMsg.toLowerCase();
+      const isServerError = /\b(50[0-9]|502|503|504)\b/.test(errorMsg)
+        || errorLower.includes('bad gateway')
+        || errorLower.includes('service unavailable')
+        || errorLower.includes('gateway timeout')
+        || errorLower.includes('internal server error');
+      const isConnectionError = errorLower.includes('connection refused')
+        || errorLower.includes('connection reset')
+        || errorLower.includes('econnrefused')
+        || errorLower.includes('timed out');
+      const isX402Failure = errorLower.includes('x402')
+        || errorLower.includes('402')
+        || errorLower.includes('payment');
+      const isAuthError = errorLower.includes('401')
+        || errorLower.includes('403')
+        || errorLower.includes('unauthorized')
+        || errorLower.includes('forbidden');
+
+      if (isServerError || isConnectionError || isX402Failure || isAuthError) {
+        const balanceNum = usdcBalance ? parseFloat(usdcBalance) : null;
+        const isLowBalance = balanceNum !== null && balanceNum < 0.1;
+
+        let hint = '**Tip:** Go to **Agent Settings** and try switching to a different AI model or endpoint.';
+        if (isX402Failure || isLowBalance) {
+          const balanceStr = balanceNum !== null ? ` (current balance: ${balanceNum.toFixed(4)} USDC)` : '';
+          hint += `\n\nAlso make sure you have enough **USDC on Base** to cover x402 endpoint micropayments${balanceStr}.`;
+        } else if (isServerError || isConnectionError) {
+          hint += '\n\nIf you\'re using an x402 pay-per-call endpoint, also check your **USDC balance on Base** — insufficient funds can cause failures.';
+        }
+
+        addMessage('hint' as MessageRole, hint);
       }
     } finally {
       setIsLoading(false);

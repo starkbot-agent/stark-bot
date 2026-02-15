@@ -289,6 +289,9 @@ pub struct SkillEntry {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subagent_type: Option<String>,
+    /// requires_api_keys serialized as JSON string
+    #[serde(default)]
+    pub requires_api_keys: String,
     pub scripts: Vec<SkillScriptEntry>,
 }
 

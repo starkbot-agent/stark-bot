@@ -9,6 +9,10 @@ use super::super::Database;
 impl Database {
     /// Get the currently enabled agent settings (only one can be enabled)
     pub fn get_active_agent_settings(&self) -> SqliteResult<Option<AgentSettings>> {
+        if let Some(cached) = self.cache.get_active_agent_settings() {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
 
         let mut stmt = conn.prepare(
@@ -20,6 +24,7 @@ impl Database {
             .query_row([], |row| Self::row_to_agent_settings(row))
             .ok();
 
+        self.cache.set_active_agent_settings(settings.clone());
         Ok(settings)
     }
 
@@ -99,6 +104,7 @@ impl Database {
         }
 
         drop(conn);
+        self.cache.invalidate_agent_settings();
 
         // Return the saved settings
         self.get_agent_settings_by_endpoint(endpoint)
@@ -110,6 +116,7 @@ impl Database {
         let conn = self.conn();
         let now = Utc::now().to_rfc3339();
         conn.execute("UPDATE agent_settings SET enabled = 0, updated_at = ?1", [&now])?;
+        self.cache.invalidate_agent_settings();
         Ok(())
     }
 

@@ -1189,6 +1189,7 @@ export interface BotSettings {
   guest_dashboard_enabled: boolean;
   theme_accent?: string;
   proxy_url?: string;
+  kanban_auto_execute: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1211,6 +1212,7 @@ export async function updateBotSettings(data: {
   guest_dashboard_enabled?: boolean;
   theme_accent?: string;
   proxy_url?: string;
+  kanban_auto_execute?: boolean;
 }): Promise<BotSettings> {
   return apiFetch('/bot-settings', {
     method: 'PUT',

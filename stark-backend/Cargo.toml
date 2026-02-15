@@ -82,6 +82,9 @@ which = "5"
 glob = "0.3"
 walkdir = "2"
 
+# In-memory cache for hot-path DB queries
+moka = { version = "0.12", features = ["sync"] }
+
 # Enum utilities
 strum = { version = "0.26", features = ["derive"] }
 

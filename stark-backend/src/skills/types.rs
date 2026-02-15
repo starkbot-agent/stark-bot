@@ -41,6 +41,19 @@ impl SkillSource {
     }
 }
 
+/// API key requirement declared by a skill
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillApiKey {
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_secret")]
+    pub secret: bool,
+}
+
+fn default_secret() -> bool {
+    true
+}
+
 /// Argument definition for a skill
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillArgument {
@@ -74,6 +87,8 @@ pub struct SkillMetadata {
     pub metadata: Option<String>,
     #[serde(default, alias = "sets_agent_subtype")]
     pub subagent_type: Option<String>,
+    #[serde(default)]
+    pub requires_api_keys: HashMap<String, SkillApiKey>,
 }
 
 fn default_version() -> String {
@@ -94,6 +109,7 @@ impl Default for SkillMetadata {
             homepage: None,
             metadata: None,
             subagent_type: None,
+            requires_api_keys: HashMap::new(),
         }
     }
 }
@@ -189,6 +205,7 @@ pub struct DbSkill {
     pub arguments: HashMap<String, SkillArgument>,
     pub tags: Vec<String>,
     pub subagent_type: Option<String>,
+    pub requires_api_keys: HashMap<String, SkillApiKey>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -209,6 +226,7 @@ impl DbSkill {
                 homepage: self.homepage,
                 metadata: self.metadata,
                 subagent_type: self.subagent_type,
+                requires_api_keys: self.requires_api_keys,
             },
             prompt_template: self.body,
             source: SkillSource::Managed, // All DB skills are "managed"

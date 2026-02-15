@@ -118,6 +118,7 @@ impl SkillRegistry {
             arguments: metadata.arguments,
             tags: metadata.tags,
             subagent_type: metadata.subagent_type,
+            requires_api_keys: metadata.requires_api_keys,
             scripts: Vec::new(),
         };
 
@@ -141,6 +142,7 @@ impl SkillRegistry {
             arguments: metadata.arguments,
             tags: metadata.tags,
             subagent_type: metadata.subagent_type,
+            requires_api_keys: metadata.requires_api_keys,
             scripts: Vec::new(), // No scripts for plain markdown
         };
 
@@ -166,6 +168,7 @@ impl SkillRegistry {
             arguments: parsed.arguments,
             tags: parsed.tags,
             subagent_type: parsed.subagent_type,
+            requires_api_keys: parsed.requires_api_keys,
             created_at: now.clone(),
             updated_at: now.clone(),
         };
@@ -213,6 +216,7 @@ impl SkillRegistry {
             arguments: parsed.arguments,
             tags: parsed.tags,
             subagent_type: parsed.subagent_type,
+            requires_api_keys: parsed.requires_api_keys,
             created_at: now.clone(),
             updated_at: now.clone(),
         };
@@ -336,6 +340,7 @@ impl SkillRegistry {
             arguments: skill.metadata.arguments.clone(),
             tags: skill.metadata.tags.clone(),
             subagent_type: skill.metadata.subagent_type.clone(),
+            requires_api_keys: skill.metadata.requires_api_keys.clone(),
             created_at: now.clone(),
             updated_at: now,
         };

@@ -35,7 +35,7 @@ pub use manage_skills::ManageSkillsTool;
 pub use mindmap_manage::MindmapManageTool;
 pub use read_skill::ReadSkillTool;
 pub use register_new_identity::RegisterNewIdentityTool;
-pub use modify_kanban::ModifyKanbanTool;
+pub use modify_kanban::WorkstreamTool;
 pub use modify_soul::ModifySoulTool;
 pub use say_to_user::SayToUserTool;
 pub use set_agent_subtype::SetAgentSubtypeTool;

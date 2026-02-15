@@ -384,6 +384,7 @@ async fn restore_backup_data(
             Some(settings.guest_dashboard_enabled),
             settings.theme_accent.as_deref(),
             None, // Don't restore proxy_url - it's infrastructure config
+            None, // Don't restore kanban_auto_execute - keep current setting
         ) {
             Ok(_) => log::info!("[Keystore] Restored bot settings"),
             Err(e) => log::warn!("[Keystore] Failed to restore bot settings: {}", e),
@@ -663,6 +664,8 @@ async fn restore_backup_data(
         let now = chrono::Utc::now().to_rfc3339();
         let arguments: std::collections::HashMap<String, skills::types::SkillArgument> =
             serde_json::from_str(&skill_entry.arguments).unwrap_or_default();
+        let requires_api_keys: std::collections::HashMap<String, skills::types::SkillApiKey> =
+            serde_json::from_str(&skill_entry.requires_api_keys).unwrap_or_default();
 
         let db_skill = skills::DbSkill {
             id: None,
@@ -679,6 +682,7 @@ async fn restore_backup_data(
             arguments,
             tags: skill_entry.tags.clone(),
             subagent_type: skill_entry.subagent_type.clone(),
+            requires_api_keys,
             created_at: now.clone(),
             updated_at: now.clone(),
         };

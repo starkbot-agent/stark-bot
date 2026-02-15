@@ -35,6 +35,8 @@ pub struct BotSettings {
     pub theme_accent: Option<String>,
     /// Optional HTTP proxy URL for tool requests (does not affect AI model API calls)
     pub proxy_url: Option<String>,
+    /// Whether kanban "ready" tasks are auto-executed by the scheduler
+    pub kanban_auto_execute: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -56,6 +58,7 @@ impl Default for BotSettings {
             guest_dashboard_enabled: false,
             theme_accent: None,
             proxy_url: None,
+            kanban_auto_execute: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -80,4 +83,6 @@ pub struct UpdateBotSettingsRequest {
     pub theme_accent: Option<String>,
     /// Optional HTTP proxy URL for tool requests (empty string or null = direct connection)
     pub proxy_url: Option<String>,
+    /// Whether kanban "ready" tasks are auto-executed by the scheduler
+    pub kanban_auto_execute: Option<bool>,
 }

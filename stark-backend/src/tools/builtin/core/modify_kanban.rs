@@ -1,11 +1,12 @@
-//! Kanban board management tool for the AI agent
+//! Workstream tool — unified kanban + scheduling for the AI agent
 //!
-//! Allows the agent to manage kanban board items:
+//! Allows the agent to manage kanban board items AND create scheduled jobs:
 //! - List items (optionally filtered by status)
 //! - Pick the next ready task (atomically moves to in_progress)
 //! - Update item status
 //! - Add notes to items
-//! - Create new items
+//! - Create new items (auto-executed by scheduler when "ready")
+//! - Schedule one-time or recurring cron jobs
 
 use crate::db::tables::kanban::{CreateKanbanItemRequest, UpdateKanbanItemRequest};
 use crate::tools::registry::Tool;
@@ -17,11 +18,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-pub struct ModifyKanbanTool {
+pub struct WorkstreamTool {
     definition: ToolDefinition,
 }
 
-impl ModifyKanbanTool {
+impl WorkstreamTool {
     pub fn new() -> Self {
         let mut properties = HashMap::new();
 
@@ -29,7 +30,7 @@ impl ModifyKanbanTool {
             "action".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "The action to perform: 'list' (show items), 'pick_task' (grab highest-priority ready task), 'update_status' (move item between columns), 'add_note' (append to result), 'create' (new item)".to_string(),
+                description: "The action to perform: 'list' (show items), 'pick_task' (grab highest-priority ready task), 'update_status' (move item between columns), 'add_note' (append to result), 'create' (new kanban item), 'schedule' (create a cron job)".to_string(),
                 default: None,
                 items: None,
                 enum_values: Some(vec![
@@ -38,6 +39,7 @@ impl ModifyKanbanTool {
                     "update_status".to_string(),
                     "add_note".to_string(),
                     "create".to_string(),
+                    "schedule".to_string(),
                 ]),
             },
         );
@@ -72,7 +74,7 @@ impl ModifyKanbanTool {
             "title".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "Title for new kanban item (required for 'create')".to_string(),
+                description: "Title for 'create' (kanban item) or 'schedule' (job name)".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -83,7 +85,7 @@ impl ModifyKanbanTool {
             "description".to_string(),
             PropertySchema {
                 schema_type: "string".to_string(),
-                description: "Description for 'create', or note text for 'add_note'".to_string(),
+                description: "Description for 'create', note text for 'add_note', or job description for 'schedule'".to_string(),
                 default: None,
                 items: None,
                 enum_values: None,
@@ -101,10 +103,58 @@ impl ModifyKanbanTool {
             },
         );
 
-        ModifyKanbanTool {
+        properties.insert(
+            "message".to_string(),
+            PropertySchema {
+                schema_type: "string".to_string(),
+                description: "The prompt/instruction the agent should execute when the scheduled job runs (required for 'schedule')".to_string(),
+                default: None,
+                items: None,
+                enum_values: None,
+            },
+        );
+
+        properties.insert(
+            "schedule_type".to_string(),
+            PropertySchema {
+                schema_type: "string".to_string(),
+                description: "Schedule type (required for 'schedule'): 'at' (one-time at ISO datetime), 'every' (recurring interval in ms), 'cron' (cron expression)".to_string(),
+                default: None,
+                items: None,
+                enum_values: Some(vec![
+                    "at".to_string(),
+                    "every".to_string(),
+                    "cron".to_string(),
+                ]),
+            },
+        );
+
+        properties.insert(
+            "schedule_value".to_string(),
+            PropertySchema {
+                schema_type: "string".to_string(),
+                description: "Schedule value (required for 'schedule'): ISO datetime for 'at', milliseconds for 'every', cron expression for 'cron'".to_string(),
+                default: None,
+                items: None,
+                enum_values: None,
+            },
+        );
+
+        properties.insert(
+            "delete_after_run".to_string(),
+            PropertySchema {
+                schema_type: "boolean".to_string(),
+                description: "Auto-delete the job after it runs once (optional for 'schedule'; defaults to true for 'at', false for 'every'/'cron')".to_string(),
+                default: None,
+                items: None,
+                enum_values: None,
+            },
+        );
+
+        WorkstreamTool {
             definition: ToolDefinition {
-                name: "modify_kanban".to_string(),
-                description: "Manage the kanban board: list tasks, pick the next ready task, update status, add notes, or create new tasks. Use this to work through the kanban board autonomously.".to_string(),
+                name: "workstream".to_string(),
+                description: "Manage your workstream: list/create/pick kanban tasks (auto-executed by scheduler), or schedule one-time and recurring cron jobs. Use this to work through tasks autonomously and schedule future work.".to_string(),
                 input_schema: ToolInputSchema {
                     schema_type: "object".to_string(),
                     properties,
@@ -117,30 +167,34 @@ impl ModifyKanbanTool {
     }
 }
 
-impl Default for ModifyKanbanTool {
+impl Default for WorkstreamTool {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[derive(Debug, Deserialize)]
-struct ModifyKanbanParams {
+struct WorkstreamParams {
     action: String,
     status: Option<String>,
     item_id: Option<i64>,
     title: Option<String>,
     description: Option<String>,
     priority: Option<i32>,
+    message: Option<String>,
+    schedule_type: Option<String>,
+    schedule_value: Option<String>,
+    delete_after_run: Option<bool>,
 }
 
 #[async_trait]
-impl Tool for ModifyKanbanTool {
+impl Tool for WorkstreamTool {
     fn definition(&self) -> ToolDefinition {
         self.definition.clone()
     }
 
     async fn execute(&self, params: Value, context: &ToolContext) -> ToolResult {
-        let params: ModifyKanbanParams = match serde_json::from_value(params) {
+        let params: WorkstreamParams = match serde_json::from_value(params) {
             Ok(p) => p,
             Err(e) => return ToolResult::error(format!("Invalid parameters: {}", e)),
         };
@@ -308,8 +362,71 @@ impl Tool for ModifyKanbanTool {
                 }
             }
 
+            "schedule" => {
+                let title = match params.title {
+                    Some(t) => t,
+                    None => return ToolResult::error("'title' is required for 'schedule' action"),
+                };
+                let message = match params.message {
+                    Some(m) => m,
+                    None => return ToolResult::error("'message' is required for 'schedule' action (the agent instruction)"),
+                };
+                let schedule_type = match params.schedule_type {
+                    Some(st) => st,
+                    None => return ToolResult::error("'schedule_type' is required for 'schedule' action ('at', 'every', or 'cron')"),
+                };
+                let schedule_value = match params.schedule_value {
+                    Some(sv) => sv,
+                    None => return ToolResult::error("'schedule_value' is required for 'schedule' action"),
+                };
+
+                if !["at", "every", "cron"].contains(&schedule_type.as_str()) {
+                    return ToolResult::error("Invalid schedule_type. Must be 'at', 'every', or 'cron'");
+                }
+
+                let delete_after_run = params.delete_after_run.unwrap_or(schedule_type == "at");
+
+                match db.create_cron_job(
+                    &title,
+                    params.description.as_deref(),
+                    &schedule_type,
+                    &schedule_value,
+                    None,           // timezone
+                    "isolated",     // session_mode
+                    Some(&message),
+                    None,           // system_event
+                    context.channel_id, // channel_id
+                    None,           // deliver_to
+                    false,          // deliver
+                    None,           // model_override
+                    None,           // thinking_level
+                    None,           // timeout_seconds
+                    delete_after_run,
+                ) {
+                    Ok(job) => {
+                        let type_label = match schedule_type.as_str() {
+                            "at" => format!("one-time at {}", schedule_value),
+                            "every" => format!("every {}ms", schedule_value),
+                            "cron" => format!("cron: {}", schedule_value),
+                            _ => schedule_value.clone(),
+                        };
+                        ToolResult::success(format!(
+                            "Scheduled job '{}' (id: {}, {}). delete_after_run={}",
+                            job.name, job.job_id, type_label, delete_after_run
+                        )).with_metadata(json!({
+                            "job_id": job.job_id,
+                            "name": job.name,
+                            "schedule_type": schedule_type,
+                            "schedule_value": schedule_value,
+                            "delete_after_run": delete_after_run,
+                        }))
+                    }
+                    Err(e) => ToolResult::error(format!("Database error: {}", e)),
+                }
+            }
+
             _ => ToolResult::error(format!(
-                "Unknown action: '{}'. Valid actions: list, pick_task, update_status, add_note, create",
+                "Unknown action: '{}'. Valid actions: list, pick_task, update_status, add_note, create, schedule",
                 params.action
             )),
         }
@@ -322,9 +439,9 @@ mod tests {
 
     #[test]
     fn test_tool_definition() {
-        let tool = ModifyKanbanTool::new();
+        let tool = WorkstreamTool::new();
         let def = tool.definition();
-        assert_eq!(def.name, "modify_kanban");
+        assert_eq!(def.name, "workstream");
         assert_eq!(def.group, ToolGroup::Development);
     }
 }

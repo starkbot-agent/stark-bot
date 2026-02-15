@@ -299,10 +299,11 @@ impl Orchestrator {
 - Keep changes minimal and focused — only modify what's necessary for the task.
 
 ### Task Tracking
-- Check the kanban board with `modify_kanban(action: "list")` to see if there are queued tasks.
-- Use `modify_kanban(action: "pick_task")` to grab the next highest-priority ready task.
-- When you finish a task, use `modify_kanban(action: "add_note")` to record what was done, then `modify_kanban(action: "update_status", status: "complete")`.
-- For complex work, break it into subtasks with `modify_kanban(action: "create")` so progress is visible."#
+- Check the kanban board with `workstream(action: "list")` to see if there are queued tasks.
+- Use `workstream(action: "pick_task")` to grab the next highest-priority ready task.
+- When you finish a task, use `workstream(action: "add_note")` to record what was done, then `workstream(action: "update_status", status: "complete")`.
+- For complex work, break it into subtasks with `workstream(action: "create")` so progress is visible.
+- Use `workstream(action: "schedule", ...)` to create one-time or recurring scheduled jobs."#
             .to_string()
     }
 

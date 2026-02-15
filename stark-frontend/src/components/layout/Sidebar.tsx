@@ -92,11 +92,9 @@ export default function Sidebar() {
         <div className="space-y-1">
           <NavItem to="/dashboard" icon={Home} label="Dashboard" />
           <NavItem to="/agent-chat" icon={MessageSquare} label="Agent Chat" />
-          <NavItem to="/agent-settings" icon={Settings} label="Agent Settings" />
-          <NavItem to="/bot-settings" icon={Bot} label="Bot Settings" />
-          <NavItem to="/crypto-transactions" icon={Wallet} label="Crypto Transactions" />
-          <NavItem to="/tools" icon={Wrench} label="Tools" />
-          <NavItem to="/skills" icon={Zap} label="Skills" />
+          <NavItem to="/workstream" icon={Columns} label="Workstream" />
+          <NavItem to="/heartbeat" icon={Heart} label="Heartbeat" />
+          <NavItem to="/mindmap" icon={Network} label="Mind Map" />
         </div>
 
         {/* Configuration Section */}
@@ -104,8 +102,9 @@ export default function Sidebar() {
           <p className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Configuration
           </p>
+          <NavItem to="/agent-settings" icon={Settings} label="Agent Settings" />
+          <NavItem to="/bot-settings" icon={Bot} label="Bot Settings" />
           <NavItem to="/channels" icon={Monitor} label="Channels" />
-          <NavItem to="/heartbeat" icon={Heart} label="Heartbeat" />
           <NavItem to="/scheduling" icon={Clock} label="Scheduling" />
           <NavItem to="/api-keys" icon={Key} label="API Keys" />
           <NavItem to="/cloud-backup" icon={Cloud} label="Cloud Backup" />
@@ -118,10 +117,9 @@ export default function Sidebar() {
           </p>
           <NavItem to="/sessions" icon={Calendar} label="Chat Sessions" />
           <NavItem to="/memories" icon={Brain} label="Memory Browser" />
-          <NavItem to="/mindmap" icon={Network} label="Mind Map" />
-          <NavItem to="/kanban" icon={Columns} label="Kanban Board" />
           <NavItem to="/identities" icon={Users} label="Identities" />
           <NavItem to="/files" icon={FolderOpen} label="Workspace Files" />
+          <NavItem to="/crypto-transactions" icon={Wallet} label="Crypto Transactions" />
           <NavItem to="/system-files" icon={Sparkles} label="System Files" />
           <NavItem to="/journal" icon={BookOpen} label="Journal" />
         </div>
@@ -131,6 +129,8 @@ export default function Sidebar() {
           <p className="px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Developer
           </p>
+          <NavItem to="/tools" icon={Wrench} label="Tools" />
+          <NavItem to="/skills" icon={Zap} label="Skills" />
           <NavItem to="/modules" icon={Package} label="Modules" />
           <NavItem to="/system" icon={HardDrive} label="System" />
           <NavItem to="/debug" icon={Bug} label="Debug" />

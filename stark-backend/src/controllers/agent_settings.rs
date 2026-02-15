@@ -265,6 +265,7 @@ pub async fn update_bot_settings(
         request.guest_dashboard_enabled,
         request.theme_accent.as_deref(),
         request.proxy_url.as_deref(),
+        request.kanban_auto_execute,
     ) {
         Ok(settings) => {
             log::info!(

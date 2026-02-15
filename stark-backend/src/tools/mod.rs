@@ -38,7 +38,7 @@ fn register_all_tools(registry: &mut ToolRegistry) {
     registry.register(Arc::new(builtin::ManageSkillsTool::new()));
     registry.register(Arc::new(builtin::ReadSkillTool::new()));
     registry.register(Arc::new(builtin::ManageModulesTool::new()));
-    registry.register(Arc::new(builtin::ModifyKanbanTool::new()));
+    registry.register(Arc::new(builtin::WorkstreamTool::new()));
     registry.register(Arc::new(builtin::InstallApiKeyTool::new()));
     registry.register(Arc::new(builtin::HeartbeatConfigTool::new()));
     registry.register(Arc::new(builtin::MindmapManageTool::new()));
@@ -105,6 +105,8 @@ fn register_all_tools(registry: &mut ToolRegistry) {
 
     // Exec tool (Development mode)
     registry.register(Arc::new(builtin::ExecTool::new()));
+    // Claude Code Remote — SSH into remote machine running Claude Code CLI
+    registry.register(Arc::new(builtin::ClaudeCodeRemoteTool::new()));
 
     // Messaging tools
     registry.register(Arc::new(builtin::AgentSendTool::new()));

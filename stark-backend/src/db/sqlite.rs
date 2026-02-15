@@ -12,12 +12,15 @@ use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Result as SqliteResult;
 use std::path::Path;
 
+use super::cache::DbCache;
+
 /// Pooled connection type alias for convenience
 pub type DbConn = PooledConnection<SqliteConnectionManager>;
 
 /// Main database wrapper with r2d2 connection pool
 pub struct Database {
     pool: Pool<SqliteConnectionManager>,
+    pub(crate) cache: DbCache,
 }
 
 impl Database {
@@ -40,7 +43,14 @@ impl Database {
         // Create connection manager with SQLite pragmas
         let manager = SqliteConnectionManager::file(database_url)
             .with_init(|conn| {
-                conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+                conn.execute_batch(
+                    "PRAGMA journal_mode=WAL;
+                     PRAGMA busy_timeout=5000;
+                     PRAGMA cache_size=-64000;
+                     PRAGMA mmap_size=268435456;
+                     PRAGMA temp_store=memory;
+                     PRAGMA synchronous=NORMAL;"
+                )
             });
 
         // Build pool with reasonable defaults for SQLite
@@ -51,7 +61,7 @@ impl Database {
             .build(manager)
             .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
 
-        let db = Self { pool };
+        let db = Self { pool, cache: DbCache::new() };
 
         if init {
             db.init()?;
@@ -401,6 +411,20 @@ impl Database {
             conn.execute("ALTER TABLE bot_settings ADD COLUMN proxy_url TEXT", [])?;
         }
 
+        // Migration: Add kanban_auto_execute column to bot_settings if it doesn't exist
+        let has_kanban_auto_execute: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('bot_settings') WHERE name='kanban_auto_execute'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if !has_kanban_auto_execute {
+            conn.execute("ALTER TABLE bot_settings ADD COLUMN kanban_auto_execute INTEGER NOT NULL DEFAULT 1", [])?;
+        }
+
         // Initialize bot_settings with defaults if empty
         let bot_settings_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM bot_settings", [], |row| row.get(0))
@@ -687,6 +711,9 @@ impl Database {
 
         // Migration: Add subagent_type column to skills if it doesn't exist
         let _ = conn.execute("ALTER TABLE skills ADD COLUMN subagent_type TEXT", []);
+
+        // Migration: Add requires_api_keys column to skills if it doesn't exist
+        let _ = conn.execute("ALTER TABLE skills ADD COLUMN requires_api_keys TEXT NOT NULL DEFAULT '{}'", []);
 
         // Skill scripts table (Python/Bash scripts bundled with skills)
         conn.execute(

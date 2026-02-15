@@ -9,6 +9,10 @@ use super::super::Database;
 impl Database {
     /// Get an API key by service name
     pub fn get_api_key(&self, service_name: &str) -> SqliteResult<Option<ApiKey>> {
+        if let Some(cached) = self.cache.get_api_key(service_name) {
+            return Ok(cached);
+        }
+
         let conn = self.conn();
 
         let mut stmt = conn.prepare(
@@ -34,6 +38,7 @@ impl Database {
             })
             .ok();
 
+        self.cache.set_api_key(service_name, api_key.clone());
         Ok(api_key)
     }
 
@@ -88,6 +93,7 @@ impl Database {
         }
 
         drop(conn);
+        self.cache.invalidate_api_key(service_name);
 
         // Return the upserted key
         self.get_api_key(service_name).map(|opt| opt.unwrap())
@@ -100,6 +106,7 @@ impl Database {
             "DELETE FROM external_api_keys WHERE service_name = ?1",
             [service_name],
         )?;
+        self.cache.invalidate_api_key(service_name);
         Ok(rows_affected > 0)
     }
 

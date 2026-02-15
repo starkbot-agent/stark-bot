@@ -141,6 +141,11 @@ impl Scheduler {
             }
         }
 
+        // Process kanban auto-execute tasks
+        if let Err(e) = self.process_kanban_tasks().await {
+            log::error!("Error processing kanban tasks: {}", e);
+        }
+
         // Process heartbeats (always enabled - individual configs control their own enabled state)
         if let Err(e) = self.process_heartbeats().await {
             log::error!("Error processing heartbeats: {}", e);
@@ -196,6 +201,136 @@ impl Scheduler {
                     log::error!("Cron job '{}' failed: {}", job.name, e);
                 }
             });
+        }
+
+        Ok(())
+    }
+
+    /// Process kanban tasks that are in "ready" status (auto-execute)
+    async fn process_kanban_tasks(&self) -> Result<(), String> {
+        // Check if auto-execute is enabled in bot settings
+        let settings = self.db.get_bot_settings()
+            .map_err(|e| format!("Failed to get bot settings: {}", e))?;
+        if !settings.kanban_auto_execute {
+            return Ok(());
+        }
+
+        // Pick tasks one at a time in a loop (pick_next_kanban_task atomically moves to in_progress)
+        loop {
+            let task = self.db.pick_next_kanban_task()
+                .map_err(|e| format!("Failed to pick kanban task: {}", e))?;
+
+            let task = match task {
+                Some(t) => t,
+                None => break, // No more ready tasks
+            };
+
+            log::info!("Auto-executing kanban task #{}: {}", task.id, task.title);
+
+            // Broadcast that the task was picked up
+            self.broadcaster.broadcast(GatewayEvent::new(
+                "kanban_item_updated",
+                serde_json::json!({ "item": &task }),
+            ));
+
+            // Spawn execution in background
+            let scheduler = self.clone_inner();
+            let task_id = task.id;
+            let task_title = task.title.clone();
+            tokio::spawn(async move {
+                if let Err(e) = scheduler.execute_kanban_task(&task).await {
+                    log::error!("Kanban task #{} '{}' failed: {}", task_id, task_title, e);
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Execute a single kanban task by dispatching it as a message
+    async fn execute_kanban_task(&self, task: &crate::db::tables::kanban::KanbanItem) -> Result<(), String> {
+        let started_at = Utc::now();
+
+        // Build the message text from task title + description
+        let message_text = if task.description.is_empty() {
+            format!("[Kanban Task] {}", task.title)
+        } else {
+            format!("[Kanban Task] {}\n\n{}", task.title, task.description)
+        };
+
+        // Use a unique negative channel ID for kanban tasks to avoid collision
+        let kanban_channel_id = -(task.id.abs() % 1_000_000 + 500_000);
+
+        let normalized = NormalizedMessage {
+            channel_id: kanban_channel_id,
+            channel_type: "kanban".to_string(),
+            chat_id: format!("kanban:task-{}", task.id),
+            user_id: "system".to_string(),
+            user_name: "Kanban".to_string(),
+            text: message_text,
+            message_id: Some(format!("kanban-{}-{}", task.id, started_at.timestamp())),
+            session_mode: Some("isolated".to_string()),
+            selected_network: None,
+            force_safe_mode: false,
+        };
+
+        // Execute with 10-minute timeout (same as cron default)
+        let dispatch_result = timeout(
+            TokioDuration::from_secs(DEFAULT_CRON_JOB_TIMEOUT_SECS),
+            self.dispatcher.dispatch(normalized),
+        ).await;
+
+        let (success, response, error_msg) = match dispatch_result {
+            Ok(result) => {
+                let ok = result.error.is_none();
+                (ok, result.response, result.error)
+            }
+            Err(_) => {
+                let err_msg = format!("Kanban task timed out after {}s", DEFAULT_CRON_JOB_TIMEOUT_SECS);
+                log::warn!("Kanban task #{} timed out", task.id);
+                (false, String::new(), Some(err_msg))
+            }
+        };
+
+        // Look up the session that was created during dispatch
+        let session_key = format!("kanban:{}:{}", kanban_channel_id, format!("kanban:task-{}", task.id));
+        let session_id = self.db.get_chat_session_by_key(&session_key)
+            .ok()
+            .flatten()
+            .map(|s| s.id);
+
+        // Update the kanban item based on result
+        if success {
+            // Mark as complete with result and session_id
+            let update = crate::db::tables::kanban::UpdateKanbanItemRequest {
+                status: Some("complete".to_string()),
+                result: Some(if response.len() > 2000 {
+                    format!("{}...", &response[..2000])
+                } else {
+                    response.clone()
+                }),
+                session_id,
+                ..Default::default()
+            };
+            let _ = self.db.update_kanban_item(task.id, &update);
+            log::info!("Kanban task #{} completed successfully", task.id);
+        } else {
+            // Revert to ready so it can be retried, store error in result
+            let update = crate::db::tables::kanban::UpdateKanbanItemRequest {
+                status: Some("ready".to_string()),
+                result: Some(format!("Error: {}", error_msg.as_deref().unwrap_or("unknown"))),
+                ..Default::default()
+            };
+            let _ = self.db.update_kanban_item(task.id, &update);
+            log::warn!("Kanban task #{} failed, reverted to ready: {:?}", task.id, error_msg);
+        }
+
+        // Broadcast update for UI refresh
+        if let Ok(Some(updated_item)) = self.db.get_kanban_item(task.id) {
+            self.broadcaster.broadcast(GatewayEvent::new(
+                "kanban_item_updated",
+                serde_json::json!({ "item": &updated_item }),
+            ));
         }
 
         Ok(())

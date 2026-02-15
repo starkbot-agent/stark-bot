@@ -485,6 +485,7 @@ async fn update_skill(
         arguments: existing.metadata.arguments.clone(),
         tags: existing.metadata.tags.clone(),
         subagent_type: existing.metadata.subagent_type.clone(),
+        requires_api_keys: existing.metadata.requires_api_keys.clone(),
         created_at: now.clone(),
         updated_at: now,
     };
